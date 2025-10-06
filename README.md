@@ -3,7 +3,7 @@
 ## Installation 
 First:  Clone this repository
 
-    git clone https://github.com/broadinstitute/PhylogicNDT.git
+    git clone https://github.com/JIAJZHAN-Kairos/PhylogicNDT.git
     cd PhylogicNDT
 
 ### Docker Install
