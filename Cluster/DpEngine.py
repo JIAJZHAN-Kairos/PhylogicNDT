@@ -739,6 +739,27 @@ def get_k_0_map(N, gamma_GRID, log_stirling_coef):
 
     return (k_0_map)
 
+import numpy as np
+
+def log_stirling_row_second_kind(n: int) -> np.ndarray:
+    import numpy as np
+    prev = np.full(n + 1, -np.inf, dtype=float)
+    prev[0] = 0.0
+    for i in range(1, n + 1):
+        cur = np.full(n + 1, -np.inf, dtype=float)
+        for m in range(1, i + 1):
+            cur[m] = np.logaddexp(prev[m - 1], np.log(m) + prev[m])
+        prev = cur
+    return prev[1:n + 1]
+
+
+def safe_log_stirling_coef(N):
+    try:
+        # Original call that may raise ValueError
+        return [lstirling(N, x) for x in range(1, N + 1)]
+    except ValueError as e:
+        logging.warning(f"lstirling failed for N={N}, fallback to DP: {e}")
+        return log_stirling_row_second_kind(N)
 
 def init_dp_prior(N, Pi_k):
     k_prior = stats.nbinom.pmf(range(1, N + 1), Pi_k["r"], Pi_k["r"] / float(Pi_k["r"] + Pi_k["mu"]))
@@ -746,8 +767,8 @@ def init_dp_prior(N, Pi_k):
     k_prior = k_prior / sum(k_prior)
 
     logging.info("Initializing prior over DP k for " + str(N) + " items")
-
-    log_stirling_coef = [lstirling(N,x) for x in range(1,N+1)]
+    log_stirling_coef = safe_log_stirling_coef(N)
+   #log_stirling_coef = [lstirling(N,x) for x in range(1,N+1)]
 
     GMAX = 5
     grid = np.linspace(1e-25, GMAX, 1000)

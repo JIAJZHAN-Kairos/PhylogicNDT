@@ -458,9 +458,22 @@ class League():
             for k in range(self.num_games_against_each_opponent):
                 for event_pair in self.event_pairs.keys():
                     #if event_pair[0] not in final_event_list or event_pair[1] not in final_event_list: continue
-                    multinomial_draw = list(np.random.multinomial(1, [self.event_pairs[event_pair].mut1_win_rate,
-                                                                      self.event_pairs[event_pair].mut2_win_rate,
-                                                                      self.event_pairs[event_pair].draw_rate], size=1)[0])
+                    #multinomial_draw = list(np.random.multinomial(1, [self.event_pairs[event_pair].mut1_win_rate,
+                    #                                                  self.event_pairs[event_pair].mut2_win_rate,
+		    #					      self.event_pairs[event_pair].draw_rate], size=1)[0])
+                    p = np.array([
+                        self.event_pairs[event_pair].mut1_win_rate,
+                        self.event_pairs[event_pair].mut2_win_rate,
+                        self.event_pairs[event_pair].draw_rate
+                    ], dtype=float)
+                    p[~np.isfinite(p)] = 0.0
+                    p = np.clip(p, 0.0, 1.0)
+                    s = p.sum()
+                    if s <= 0:
+                        p = np.array([0.5, 0.5, 0.0], dtype=float)
+                    else:
+                        p = p / s
+                    multinomial_draw = list(np.random.multinomial(1, p, size=1)[0])
                     new_season.update_table_from_multinomial_sampling(event_pair, multinomial_draw)
 
             new_season.get_sorted_league()
