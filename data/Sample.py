@@ -95,6 +95,7 @@ class TumorSample:
                                                _additional_muts=_additional_muts)  # a list of SomMutation objects
 
         self.CnProfile = self._resolve_CnEvents(seg_file, input_type=seg_input_type)
+        self._get_local_cn_for_each_mut()
 
         self.ClustersPostMarginal = None  # format F[Cluster] = CCF post hist
 
@@ -382,14 +383,41 @@ class TumorSample:
         purity, seg_tree = utils.rdata_loader.load_abs_rdata(seg_file)
         self.purity = purity
         return seg_tree
-
     def _get_local_cn_for_each_mut(self):
+
+        if self.CnProfile is None:
+            logging.info("No CN profile found, skip assigning local copy number")
+            return
+
         logging.info("Getting local cn for each mutation")
-        for mut in set(self.mutations).union(set(self.low_coverage_mutations.values())):
-            # update local cn
-            if len(self.seg_profile.merged_seg_tree[mut.chrN][mut.pos]) > 0:
-                cn1, cn2 = list(self.seg_profile.merged_seg_tree[mut.chrN][mut.pos])[0].data[0:2]
-                mut.clean_local_cn(cn1, cn2)
+
+    # mutation + low_coverage_mutations
+        all_muts = set(self.mutations).union(set(self.low_coverage_mutations.values()))
+
+        for mut in all_muts:
+            chrom = str(mut.chrN)
+            if chrom not in self.CnProfile:
+                continue
+
+            tree = self.CnProfile[chrom]
+            # IntervalTree [start, end)，pos:pos+1
+            hits = tree[mut.pos:mut.pos + 1]
+            if not hits:
+                continue
+
+            interval = list(hits)[0]
+
+            data = interval.data
+            # _resolve_CnEvents data = (sample_name, {'cn_a1':..., 'cn_a2':...})
+            if isinstance(data, tuple):
+                cn_info = data[1]
+            else:
+                cn_info = data
+
+            cn1 = cn_info.get('cn_a1')
+            cn2 = cn_info.get('cn_a2')
+
+            mut.clean_local_cn(cn1, cn2)
 
     # ======small class utils====================
     @staticmethod
