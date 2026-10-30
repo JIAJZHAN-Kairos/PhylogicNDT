@@ -6,3 +6,9 @@ build/
 dist/
 *.egg-info/
 .pytest_cache/
+
+.venv/
+demo/
+work/
+results/
+*.pkl

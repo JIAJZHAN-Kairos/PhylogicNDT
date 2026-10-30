@@ -18,3 +18,5 @@ jobs:
       - run: python PhylogicNDT.py Cluster --help
       - run: python PhylogicNDT.py Timing --help
       - run: python PhylogicNDT.py LeagueModel --help
+      - name: Synthetic SASH/PURPLE to Cluster, Timing and LeagueModel
+        run: bash examples/run_demo.sh

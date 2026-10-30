@@ -43,18 +43,18 @@ reference functions as well.
 
 GitHub Actions installs the pinned dependencies on Linux / Python 3.12,
 checks source hashes, runs the regression tests and checks the three CLI
-entry points.
+entry points, plus the 14 input-adapter tests and the synthetic integration smoke test.
 
 ## Synthetic integration check
 
-The companion workflow has already run this same core snapshot locally on
+The included workflow has already run this same core snapshot locally on
 fabricated male/female samples through Cluster (250 iterations), Timing
 (`original`) and LeagueModel (2 permutations / 10 seasons). Its compact
-[patient-free validation receipt](https://github.com/JIAJZHAN-Kairos/sash-purple-phylogic-workflow/blob/main/provenance/synthetic_smoke.json)
+[patient-free validation receipt](../provenance/synthetic_smoke.json)
 records the actual test runtime and output counts.
 
 The synthetic smoke test and regression tests are not a biological benchmark
 or a full production cohort acceptance. New datasets still require input/QC
 review, appropriate driver/peak definitions, explicit population/exclusion
 manifests and output-level validation. Follow the
-[SASH/PURPLE tutorial](https://github.com/JIAJZHAN-Kairos/sash-purple-phylogic-workflow/blob/main/docs/SASH_PURPLE_TO_PHYLOGIC.md).
+[SASH/PURPLE tutorial](SASH_PURPLE_TO_PHYLOGIC.md).
