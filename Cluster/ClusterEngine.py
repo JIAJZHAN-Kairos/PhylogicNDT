@@ -92,13 +92,16 @@ class ClusterEngine:
         muts_added = 0
         combined_blacklist = set.union(*[set(x.artifacts_in_blacklist) for x in data.sample_list])
         for mut in combined_lowcov.union(combined_cnvs):
-            if mut in combined_blacklist: continue  # skip blacklisted mutations!!
+            if mut in combined_blacklist:
+                continue  # skip blacklisted mutations!!
             mut_row = []
-            if 'WGD' in mut.var_str:
-                       for sample in data.sample_list:
-                            print(sample.WGD_status)
-                       for sample in data.sample_list:
-                            mut_row.append(sample.get_mut_by_varstr(mut.var_str))
+            # if 'WGD' in mut.var_str:
+            #     for sample in data.sample_list:
+            #         print(sample.WGD_status)
+
+            for sample in data.sample_list:
+                mut_row.append(sample.get_mut_by_varstr(mut.var_str))
+
             if len(mut_row) < len(data.sample_names):
                 continue
 
@@ -126,9 +129,12 @@ class ClusterEngine:
 
                     data.sample_list[sample_index].concordant_variants.append(data.sample_list[sample_index].get_mut_by_varstr(mut.var_str))
                 summed_diffs = np.sum(ccf_diffs, axis=1)
-                mut_assignment = summed_diffs.argmin() + 1
+                from SinglePatientTiming.TimingRepair import nearest_cn_cluster
+                mut_assignment = nearest_cn_cluster(
+                    [np.argmax(x.ccf_1d) / float(grid_size - 1) for x in mut_row],
+                    {i + 1: np.asarray(grid) for i, grid in enumerate(results['clust_CCF_dens'])})
                 max_diff_across_all_samples = np.max(ccf_diffs[summed_diffs.argmin()])
-                if max_diff_across_all_samples > 0.5:
+                if mut_assignment is None or max_diff_across_all_samples > 0.5:
                     # don't assign if there is a time point where ccf difference at least 0.2
                     logging.info("Appending mut to blacklist since does not fit well with any cluster: " + mut.var_str)
                     for sample in data.sample_list:

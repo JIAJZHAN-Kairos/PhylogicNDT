@@ -47,6 +47,13 @@ def build_parser():
     base_parser.add_argument("-sif", "--sample_information_file", dest='sif', type=str, help="""Sample information tsv file with sample_ids and CCF and copy-number file_paths; \n 
     format per row (with header) sample_id\tmaf_fn\tseg_fn\tpurity\ttimepoint""")
 
+    base_parser.add_argument("-ref", '--genome_build',
+                             type=str,
+                             action='store',
+                             dest='genome_build',
+                             default="hg19",
+                             help='Reference genome build. Supported builds: hg19, hg38')
+
     # Filtering of Mutations/Events
     # option for specifying blacklist
     base_parser.add_argument("-bl", '--artifact_blacklist',
@@ -68,8 +75,7 @@ def build_parser():
                              type=str,
                              action='store',
                              dest='driver_genes_file',
-                             default=os.path.join(os.path.dirname(__file__),
-                                                  'data/supplement_data/Driver_genes_v1.0.txt'),
+                             default=os.path.join(os.path.dirname(__file__), 'data/supplement_data/Driver_genes_v1.0.txt'),
                              help='driver list file')
 
     base_parser.add_argument("-tr", '--treatment_data',
@@ -257,6 +263,12 @@ def build_parser():
                             dest='maf_input_type',
                             default='auto')
 
+    clustering.add_argument('--seg_input_type',
+                            action='store',
+                            dest='seg_input_type',
+                            default='auto',
+                            choices=['auto', 'absolute', 'timing_format', 'alleliccapseg', 'none'])
+
     # BuildTree  Tool
 
     buildtree = subparsers.add_parser("BuildTree", help="BuildTree module for constructing of phylogenetic trees.",
@@ -437,6 +449,10 @@ def build_parser():
                         dest='grid_size',
                         default=101,
                         help='num ccf bins, must match for txt input, otherwise may be any number that grid in absolute RData is divisble by.')
+    timing.add_argument('--comparison_method',
+                        choices=['joint', 'original'],
+                        default='joint',
+                        help='Method for converting event pi distributions into pairwise comparisons')
     timing.set_defaults(func=SinglePatientTiming.SinglePatientTiming.run_tool)
 
     single_patient_timing = subparsers.add_parser("SinglePatientTiming", help="Time somatic events in one or multiple samples.",
@@ -447,6 +463,10 @@ def build_parser():
                         dest='min_supporting_muts',
                         default=3,
                         help='Minimum number of supporting mutations to time a copy number event')
+    single_patient_timing.add_argument('--comparison_method',
+                        choices=['joint', 'original'],
+                        default='joint',
+                        help='Method for converting event pi distributions into pairwise comparisons')
     single_patient_timing.set_defaults(func=SinglePatientTiming.SinglePatientTiming.run_tool)
 
     leaguemodel = subparsers.add_parser("LeagueModel", help="Time somatic events across a cohort.",
@@ -481,6 +501,18 @@ def build_parser():
                              dest='n_seasons',
                              default=200,
                              help='number of seasons')
+    leaguemodel.add_argument('--n_jobs', '-n_jobs',
+                             type=int,
+                             action='store',
+                             dest='n_jobs',
+                             default=1,
+                             help='number of parallel jobs to run permutations in parallel')
+    leaguemodel.add_argument('--perm_chunk_size',
+                             type=int,
+                             action='store',
+                             dest='perm_chunk_size',
+                             default=8,
+                             help='number of permutations per job')
     leaguemodel.add_argument('--percent_subset', '-percent_subset',
                              type=float,
                              action='store',
@@ -523,6 +555,27 @@ def build_parser():
                              dest='final_sample_list',
                              default=None,
                              help='final sample list file')
+    leaguemodel.add_argument('--final_event_list', '-final_event_list',
+                             type=str,
+                             action='store',
+                             dest='final_event_list',
+                             default=None,
+                             help='final event list file')
+    leaguemodel.add_argument('--drop_silent_mutations',
+                             action='store_true',
+                             dest='drop_silent_mutations',
+                             default=False)
+    leaguemodel.add_argument('--hotspot_fn',
+                             action='store',
+                             dest='hotspot_fn',
+                             default=None,
+                             help='File listing cancer hotspot mutations to stratify events.')
+    leaguemodel.add_argument('--mutation_event_resolution',
+                             action='store',
+                             choices=["gene", "hotspot_nonsyn"],
+                             dest='mutation_event_resolution',
+                             default="gene",
+                             help='Resolution for collapsing SNV events')
     leaguemodel.add_argument('--num_games_against_each_opponent', '-num_games_against_each_opponent',
                              type=int,
                              action='store',
@@ -573,15 +626,19 @@ def build_parser():
     return parser.parse_args()
 
 
-# if __name__ == "main":
-args = build_parser()
-# get current working directory
-filename = os.path.join(os.getcwd(), f"phylogicndt.{args.tool}.log")
-print(filename)
-logging.basicConfig(filename=filename,
-                    filemode='w',
-                    format='%(asctime)s - %(levelname)s - %(message)s',
-                    datefmt='%d-%b-%y %H:%M:%S',
-                    level=getattr(logging, "INFO"),
-                    force=True)
-args.func(args)
+if __name__ == '__main__':
+    args = build_parser()
+    # get current working directory
+    filename = os.path.join(os.getcwd(), f"phylogicndt.{args.tool}.log")
+    print(filename)
+    logging.basicConfig(filename=filename,
+                        filemode='w',
+                        format='%(asctime)s - %(levelname)s - %(message)s',
+                        datefmt='%d-%b-%y %H:%M:%S',
+                        level=getattr(logging, "INFO"),
+                        force=True)
+    # Silence verbose font-subsetting logs from fontTools (used by matplotlib
+    # when saving PDF/PNG).  Without this every save floods the log with
+    # hundreds of glyph-list and table-pruning INFO messages.
+    logging.getLogger('fontTools').setLevel(logging.WARNING)
+    args.func(args)

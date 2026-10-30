@@ -1,3 +1,4 @@
+from utils.sex_cn import write_qc
 import os
 import logging
 
@@ -27,30 +28,38 @@ def run_tool(args):
                                    PoN_file=PoN, indiv_name=args.indiv_id, artifact_whitelist=args.artifact_whitelist,
                                    min_coverage=args.min_cov, use_indels=args.use_indels,
                                    impute_missing=args.impute_missing,
-                                   driver_genes_file=args.driver_genes_file)
+                                   driver_genes_file=args.driver_genes_file, genome_build=args.genome_build)
 
     # delete_auto_bl=args.Delete_Blacklist,
     # Load sample data
 
     if args.sif:  # if sif file is specified
         sif_file = open(args.sif)
+        sif_header = None
 
         for file_idx, file_line in enumerate(sif_file):
 
-            ##for now, assume input file order is of the type sample_id\tmaf_fn\tseg_fn\tpurity\ttimepoint
+            ##for now, assume input file order is of the type
+            ##sample_id\tmaf_fn\tseg_fn\tpurity\ttimepoint[\tploidy]
             if not file_idx:
+                sif_header = file_line.rstrip('\n').split('\t')
                 continue
             if file_line.strip('\n').strip == "":
                 continue  # empty rows
             smpl_spec = file_line.strip('\n').split('\t')
+            metadata = dict(zip(sif_header, smpl_spec))
             sample_id = smpl_spec[0]
             maf_fn = smpl_spec[1]
             seg_fn = smpl_spec[2]
             purity = float(smpl_spec[3])
             timepoint = float(smpl_spec[4])
+            ploidy = float(smpl_spec[5]) if len(smpl_spec) > 5 and smpl_spec[5] else 2.0
             patient_data.addSample(maf_fn, sample_id, timepoint_value=timepoint, grid_size=args.grid_size,
                                    _additional_muts=None, seg_file=seg_fn,
-                                   purity=purity, input_type=args.maf_input_type)
+                                   purity=purity, ploidy=ploidy,
+                                   sex=metadata.get('sex'), par_mode=metadata.get('par_mode', 'unresolved'),
+                                   input_type=args.maf_input_type,
+                                   seg_input_type=args.seg_input_type)
 
             if len(patient_data.sample_list) == args.n_samples:  # use only first N samples
                 break
@@ -60,20 +69,27 @@ def run_tool(args):
         # sort order on timepoint or order of entry on cmdline if not present
         print(args.sample_data)
         for idx, sample_entry in enumerate(args.sample_data):
-            ##for now, assume input order is of the type sample_id\tmaf_fn\tseg_fn\tpurity\ttimepoint
+            ##for now, assume input order is of the type
+            ##sample_id:maf_fn:seg_fn:purity:timepoint[:ploidy]
             smpl_spec = sample_entry.strip('\n').split(':')
             sample_id = smpl_spec[0]
             maf_fn = smpl_spec[1]
             seg_fn = smpl_spec[2]
             purity = float(smpl_spec[3])
             timepoint = float(smpl_spec[4])
+            ploidy = float(smpl_spec[5]) if len(smpl_spec) > 5 and smpl_spec[5] else 2.0
 
             patient_data.addSample(maf_fn, sample_id, timepoint_value=timepoint, grid_size=args.grid_size,
                                    _additional_muts=None,
                                    seg_file=seg_fn,
-                                   purity=purity)
+                                   purity=purity,
+                                   ploidy=ploidy,
+                                   input_type=args.maf_input_type,
+                                   seg_input_type=args.seg_input_type)
             if len(patient_data.sample_list) == args.n_samples:  # use only first N samples
                 break
+
+    write_qc(patient_data.sample_list, 'Cluster')
 
     if args.intersect_cn_trees:
         patient_data.intersect_cn_trees()

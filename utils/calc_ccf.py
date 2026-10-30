@@ -2,7 +2,7 @@ import numpy as np
 import scipy.stats
 
 
-def calc_ccf(local_cn_a1, local_cn_a2, alt_cnt, ref_cnt, purity, grid_size=101):
+def calc_ccf(local_cn_a1, local_cn_a2, alt_cnt, ref_cnt, purity, grid_size=101, normal_cn=2.):
     """
     Calculate CCF from local copy number, alt/ref count, and purity
     Args:
@@ -38,25 +38,25 @@ def calc_ccf(local_cn_a1, local_cn_a2, alt_cnt, ref_cnt, purity, grid_size=101):
     total_cn = local_cn_a1 + local_cn_a2
 
     # Calculate likelihood of clonality and subclonality
-    ccf_dist_m1 = ccf_dist_from_params(1, total_cn, alt_cnt, ref_cnt, purity, grid_size=grid_size)
+    ccf_dist_m1 = ccf_dist_from_params(1, total_cn, alt_cnt, ref_cnt, purity, grid_size=grid_size, normal_cn=normal_cn)
     ccf_mode = np.argmax(ccf_dist_m1) / 100.
-    af_mode = ccf_mode * purity / (total_cn * purity + 2 * (1 - purity))
+    af_mode = ccf_mode * purity / (total_cn * purity + normal_cn * (1 - purity))
     p_subclonal = scipy.stats.binom.pmf(alt_cnt, total_cov, af_mode)
     p_clonal = 0
     # Add likelihood of each integer multiplicity
     for mult in np.arange(2, clonal_cn_a2 + 1):
-        af_mode = mult * purity / (total_cn * purity + 2 * (1 - purity))
+        af_mode = mult * purity / (total_cn * purity + normal_cn * (1 - purity))
         mult_weight = scipy.stats.binom.pmf(alt_cnt, total_cov, af_mode)
         p_clonal += mult_weight
     # Add likelihood of subclonal shifts in multiplicity > 1 due to gains/deletions
     if subclonal_frac_a1:
         for mult in np.arange(subclonal_frac_a1 + 1, subclonal_cn_a1):
-            af_mode = mult * purity / (total_cn * purity + 2 * (1 - purity))
+            af_mode = mult * purity / (total_cn * purity + normal_cn * (1 - purity))
             mult_weight = scipy.stats.binom.pmf(alt_cnt, total_cov, af_mode)
             p_clonal += mult_weight
     if subclonal_frac_a2:
         for mult in np.arange(subclonal_frac_a2 + 1, subclonal_cn_a2):
-            af_mode = mult * purity / (total_cn * purity + 2 * (1 - purity))
+            af_mode = mult * purity / (total_cn * purity + normal_cn * (1 - purity))
             mult_weight = scipy.stats.binom.pmf(alt_cnt, total_cov, af_mode)
             p_clonal += mult_weight
 
@@ -74,12 +74,12 @@ def calc_ccf(local_cn_a1, local_cn_a2, alt_cnt, ref_cnt, purity, grid_size=101):
         sum_dist_1 = sum(subc_ccf_dist1)
         if sum_dist_1:
             subc_ccf_dist1 /= sum_dist_1
-            af_mode_1 = subclonal_frac_a1 * purity / (total_cn * purity + 2 * (1 - purity))
+            af_mode_1 = subclonal_frac_a1 * purity / (total_cn * purity + normal_cn * (1 - purity))
             subc_ccf_hist += subc_ccf_dist1 * scipy.stats.binom.pmf(alt_cnt, total_cov, af_mode_1)
         sum_dist_2 = sum(subc_ccf_dist2)
         if sum_dist_2:
             subc_ccf_dist2 /= sum_dist_2
-            af_mode_2 = (1 - subclonal_frac_a1) * purity / (total_cn * purity + 2 * (1 - purity))
+            af_mode_2 = (1 - subclonal_frac_a1) * purity / (total_cn * purity + normal_cn * (1 - purity))
             subc_ccf_hist += subc_ccf_dist2 * scipy.stats.binom.pmf(alt_cnt, total_cov, af_mode_2)
     if subclonal_frac_a2:
         subc_ccf_dist1 = ccf_dist_m1.copy()
@@ -89,12 +89,12 @@ def calc_ccf(local_cn_a1, local_cn_a2, alt_cnt, ref_cnt, purity, grid_size=101):
         sum_dist_1 = sum(subc_ccf_dist1)
         if sum_dist_1:
             subc_ccf_dist1 /= sum_dist_1
-            af_mode_1 = subclonal_frac_a2 * purity / (total_cn * purity + 2 * (1 - purity))
+            af_mode_1 = subclonal_frac_a2 * purity / (total_cn * purity + normal_cn * (1 - purity))
             subc_ccf_hist += subc_ccf_dist1 * scipy.stats.binom.pmf(alt_cnt, total_cov, af_mode_1)
         sum_dist_2 = sum(subc_ccf_dist2)
         if sum_dist_2:
             subc_ccf_dist2 /= sum_dist_2
-            af_mode_2 = (1 - subclonal_frac_a2) * purity / (total_cn * purity + 2 * (1 - purity))
+            af_mode_2 = (1 - subclonal_frac_a2) * purity / (total_cn * purity + normal_cn * (1 - purity))
             subc_ccf_hist += subc_ccf_dist2 * scipy.stats.binom.pmf(alt_cnt, total_cov, af_mode_2)
     subc_ccf_hist /= sum(subc_ccf_hist)
 
@@ -108,7 +108,7 @@ def calc_ccf(local_cn_a1, local_cn_a2, alt_cnt, ref_cnt, purity, grid_size=101):
     return ccf_hist
 
 
-def ccf_dist_from_params(mult, total_cn, alt_cnt, ref_cnt, purity, grid_size=101):
+def ccf_dist_from_params(mult, total_cn, alt_cnt, ref_cnt, purity, grid_size=101, normal_cn=2.):
     """
     Calculate a ccf distribution for a given multiplicity
     Args:
@@ -130,6 +130,6 @@ def ccf_dist_from_params(mult, total_cn, alt_cnt, ref_cnt, purity, grid_size=101
     ccf_bins = np.linspace(0, 1, grid_size)
 
     # Since transformation is linear, ToV formula not necessary
-    ccf_domain_in_af_space = ccf_bins * mult * purity / (total_cn * purity + 2 * (1 - purity))
+    ccf_domain_in_af_space = ccf_bins * mult * purity / (total_cn * purity + normal_cn * (1 - purity))
     ccf_dist = scipy.stats.beta.pdf(ccf_domain_in_af_space, alt_cnt + 1, ref_cnt + 1)
     return ccf_dist / sum(ccf_dist)

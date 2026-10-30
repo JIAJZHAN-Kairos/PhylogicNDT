@@ -18,6 +18,7 @@
       <div class="row">
         <h2 class="ml-3">Phylogic Timing Results - @@indiv_id</h2>
       </div>
+      <p class="ml-3">@@sex_cn_notice</p>
       <div class="card">
         <div id="headingOne" class="card-header">
           <h5 class="mb-0">
@@ -29,6 +30,7 @@
         <div id="collapseOne" class="collapse show" aria-labelledby="headingOne">
           <div class="card-body">
             <div class="row">
+              <p>@@graph_notice</p>
               <div id="timing-graph" style="width: 100%; display: block"></div>
             </div>
           </div>
@@ -108,9 +110,10 @@
         _create: function() {
           let nodes = this.options.nodes,
             edges = this.options.edges,
-            pos = this.options.pos,
-            width = -Math.min(...Object.values(pos).map(d => d[0])) * 1.5,
-            height = Math.max(...Object.values(pos).map(d => d[1])) * 3;
+            pos = this.options.pos;
+          if (!nodes.length) return;
+          let width = Math.max(400, -Math.min(...Object.values(pos).map(d => d[0])) * 1.5),
+            height = Math.max(400, Math.max(...Object.values(pos).map(d => d[1])) * 3);
 
           let comp_graph = d3.select(this.element.context).append("svg")
             .attr("baseProfile", "full")
@@ -196,7 +199,7 @@
             height = 400;
 
           let x = d3.scaleLinear()
-            .domain([-1, 46])
+            .domain([-1, 48])
             .range([left_margin, width - right_margin]);
           let y = d3.scaleLinear()
             .domain([0, 1])
@@ -214,8 +217,8 @@
           gain_boxplot.append("g")
             .call(g => g
               .attr("transform", "translate(0 " + (height - bottom_margin) + ")")
-              .call(d3.axisBottom(x).tickValues([...Array(46).keys()])
-                .tickFormat(d => (d >= 44 ? "X" : Math.floor((d + 2) / 2)) + (d % 2 ? "q" : "p"))
+              .call(d3.axisBottom(x).tickValues([...Array(48).keys()])
+                .tickFormat(d => (d >= 46 ? "Y" : d >= 44 ? "X" : Math.floor((d + 2) / 2)) + (d % 2 ? "q" : "p"))
               )
             );
           gain_boxplot.append("g")
@@ -241,8 +244,8 @@
           loss_boxplot.append("g")
             .call(g => g
               .attr("transform", "translate(0 " + (height - bottom_margin) + ")")
-              .call(d3.axisBottom(x).tickValues([...Array(46).keys()])
-                .tickFormat(d => (d >= 44 ? "X" : Math.floor((d + 2) / 2)) + (d % 2 ? "q" : "p"))
+              .call(d3.axisBottom(x).tickValues([...Array(48).keys()])
+                .tickFormat(d => (d >= 46 ? "Y" : d >= 44 ? "X" : Math.floor((d + 2) / 2)) + (d % 2 ? "q" : "p"))
               )
             );
           loss_boxplot.append("g")
@@ -255,6 +258,14 @@
             .attr("text-anchor", "middle")
             .attr("font-size", "16px")
             .text("Timing scores of chromosome arm losses");
+
+          for (const [prefix, panel] of [["gain_chr", gain_boxplot], ["loss_chr", loss_boxplot]]) {
+            if (!Object.keys(pi_distributions).some(k => k.startsWith(prefix))) {
+              panel.append("text").attr("x", width / 2).attr("y", height / 2)
+                .attr("text-anchor", "middle")
+                .text("NA: no eligible event-specific timing estimate (not evidence of absence)");
+            }
+          }
 
           let get_quartiles = function(dist) {
             let lower_quartile,
@@ -280,11 +291,11 @@
 
           let box_half_width = x(0.4) - x(0);
 
-          for (let i = 0; i <= 45; i++) {
-            let chr = i >= 44 ? "X" : Math.floor((i + 2) / 2),
+          for (let i = 0; i <= 47; i++) {
+            let chr = i >= 46 ? "Y" : i >= 44 ? "X" : Math.floor((i + 2) / 2),
               arm = i % 2 ? "q" : "p",
-              arm_gain = "gain_" + chr + arm,
-              arm_loss = "loss_" + chr + arm;
+              arm_gain = "gain_chr" + chr + arm,
+              arm_loss = "loss_chr" + chr + arm;
             if (arm_gain in pi_distributions) {
               let pi_dist = pi_distributions[arm_gain],
                 {lower_quartile, median, upper_quartile} = get_quartiles(pi_dist),

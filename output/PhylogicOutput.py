@@ -15,6 +15,7 @@ import math
 import re
 import networkx as nx
 import logging
+from SinglePatientTiming.TimingRepair import dedup_cn_events, eligible
 
 import matplotlib
 
@@ -485,7 +486,8 @@ class PhylogicOutput(object):
         if pie_plots:
             sample_name_table_options['pie_plots'] = pie_plots
 
-        if len(child_dicts) and len(tree_iterations):
+        # Cluster-only runs do not have BuildTree output, so these can be None.
+        if child_dicts and tree_iterations:
             tree_coordinates_list = []
             print('Plotting trees')
             n_trees = 0
@@ -1246,29 +1248,37 @@ class PhylogicOutput(object):
                   'Tumor_Seq_Allele', 't_ref_count', 't_alt_count', 'Allelic_CN_minor', 'Allelic_CN_major',
                   'Allelic_CN', 'pi_mean', 'pi_low', 'pi_high']
         header.extend('pi_{}'.format(float(x) / 100) for x in range(101))
+        header.extend(['Timing_status', 'Timing_source', 'Timing_reason', 'Cluster_ID'])
         patient_name = timing_engine.patient.indiv_name
         null_pi = ('',) * 101
         with open(patient_name + '.timing.tsv', 'w') as f:
             f.write('\t'.join(header))
             if timing_engine.WGD is not None:
-                pi_mean, pi_high, pi_low = self._get_mean_high_low(timing_engine.WGD.pi_dist)
+                if eligible(timing_engine.WGD):
+                    pi_mean, pi_high, pi_low = self._get_mean_high_low(timing_engine.WGD.pi_dist)
+                    wgd_pi = timing_engine.WGD.pi_dist
+                else:
+                    pi_mean = pi_high = pi_low = ''
+                    wgd_pi = null_pi
                 line = [patient_name, 'WGD', '', '', '', '', '', '', '', '', '', '', pi_mean, pi_low, pi_high]
-                line.extend(timing_engine.WGD.pi_dist)
+                line.extend(wgd_pi)
+                line.extend([timing_engine.WGD.timing_status, timing_engine.WGD.timing_source, timing_engine.WGD.timing_reason, ""])
                 f.write('\n' + '\t'.join(map(str, line)))
             for cn_event_list in timing_engine.all_cn_events.values():
                 for cn_event in cn_event_list:
-                    if cn_event.pi_dist is not None and not any(np.isnan(cn_event.pi_dist)):
+                    if cn_event.timing_status in ('estimated', 'subclonal') and cn_event.pi_dist is not None and not any(np.isnan(cn_event.pi_dist)):
                         pi_mean, pi_high, pi_low = self._get_mean_high_low(cn_event.pi_dist)
                         pi_dist = cn_event.pi_dist
                     else:
                         pi_mean = pi_high = pi_low = ''
                         pi_dist = null_pi
-                    line = [patient_name, cn_event.event_name, cn_event.chrN, cn_event.arm, '', '', '', '', '',
+                    line = [patient_name, cn_event.detail_event_name, cn_event.chrN, cn_event.arm, '', '', '', '', '',
                             cn_event.cn_a1, cn_event.cn_a2, cn_event.allelic_cn, pi_mean, pi_low, pi_high]
                     line.extend(pi_dist)
+                    line.extend([cn_event.timing_status, cn_event.timing_source, cn_event.timing_reason, cn_event.cluster_id])
                     f.write('\n' + '\t'.join(map(str, line)))
             for mut in timing_engine.mutations.values():
-                if mut.pi_dist is not None and not any(np.isnan(mut.pi_dist)):
+                if mut.timing_status in ('estimated', 'subclonal') and mut.pi_dist is not None and not any(np.isnan(mut.pi_dist)):
                     pi_mean, pi_high, pi_low = self._get_mean_high_low(mut.pi_dist)
                     pi_dist = mut.pi_dist
                 else:
@@ -1277,11 +1287,13 @@ class PhylogicOutput(object):
                 line = [patient_name, mut.event_name, mut.chrN, '', mut.pos, mut.ref, mut.alt, mut.ref_cnt, mut.alt_cnt,
                         mut.local_cn_a1, mut.local_cn_a2, '', pi_mean, pi_low, pi_high]
                 line.extend(pi_dist)
+                line.extend([mut.timing_status, mut.timing_source, getattr(mut, "timing_reason", None), mut.cluster_assignment])
                 f.write('\n' + '\t'.join(map(str, line)))
         if timing_engine.WGD is not None:
             wgd_header = ['Patient_ID', 'Event Name', 'Chromosome', 'Arm', 'Allelic_CN_minor', 'Allelic_CN_major',
                           'Allelic_CN', 'pi_mean', 'pi_low', 'pi_high']
             wgd_header.extend('pi_{}'.format(float(x) / 100) for x in range(101))
+            wgd_header.extend(['Clock_used', 'Clock_reason'])
             with open(patient_name + '.WGD_supporting_events.timing.tsv', 'w') as f:
                 f.write('\t'.join(wgd_header))
                 for state in timing_engine.WGD.supporting_arm_states:
@@ -1292,9 +1304,10 @@ class PhylogicOutput(object):
                         else:
                             pi_mean = pi_high = pi_low = ''
                             pi_dist = null_pi
-                        line = [patient_name, cn_event.event_name, cn_event.chrN, cn_event.arm,
+                        line = [patient_name, cn_event.detail_event_name, cn_event.chrN, cn_event.arm,
                                 cn_event.cn_a1, cn_event.cn_a2, cn_event.allelic_cn, pi_mean, pi_low, pi_high]
                         line.extend(pi_dist)
+                        line.extend([int(getattr(cn_event, 'wgd_clock_used', False)), getattr(cn_event, 'wgd_clock_reason', '')])
                         f.write('\n' + '\t'.join(map(str, line)))
 
     @staticmethod
@@ -1317,6 +1330,15 @@ class PhylogicOutput(object):
         Returns: list of nodes, list of edges, dict of node positions
 
         """
+        n_events = len(set(itertools.chain.from_iterable(comps.keys())))
+        if n_events > 200:
+            plt.figure(figsize=figsize)
+            plt.axis('off')
+            plt.text(.5, .5, 'Timing network omitted: {} events exceed the 200-event display limit.\nFull comparisons are retained.'.format(n_events),
+                     ha='center', va='center', wrap=True)
+            plt.savefig(indiv_id + '.comp_graph.pdf')
+            plt.close()
+            return [], [], {}
         DG = self._get_timing_graph(comps, coincidence_thresh=coincidence_thresh, edge_thresh=edge_thresh,
                                     eves_per_row=eves_per_row)
         nodes = list(DG.nodes())
@@ -1336,7 +1358,7 @@ class PhylogicOutput(object):
         ywidth = ymax - ymean
         ax.set_xlim(xmean - xwidth * 1.2, xmean + xwidth * 1.2)
         ax.set_ylim(ymean - ywidth * 1.2, ymean + ywidth * 1.2)
-        ax.set_title(indiv_id + ' timing graph')
+        ax.set_title(indiv_id + ' pairwise timing preferences (not a lineage tree)')
         plt.savefig(indiv_id + '.comp_graph.pdf')
         return nodes, edges, pos
 
@@ -1346,68 +1368,17 @@ class PhylogicOutput(object):
         comps: dict[(event_i, event_j)] -> (p_i_before_j, p_j_before_i, p_coincident)
                Must contain both directions either as (i,j) or (j,i). Order-agnostic lookup is handled below.
         """
-        # --- 1) Build the undirected "coincidence" graph
-        all_events = set(itertools.chain.from_iterable(comps.keys()))
-        Gc = nx.Graph()
-        Gc.add_nodes_from(all_events)
-
-        for (e1, e2), (p1_2, p2_1, p_coinc) in comps.items():
-            if p_coinc > coincidence_thresh:
-                Gc.add_edge(e1, e2)
-
-        # Ensure isolated events (no coincident partners) appear as 1-clique nodes
-        # (find_cliques already returns singletons for isolated nodes)
-        cliques = list(nx.find_cliques(Gc))  # each is a list of event names
-
-        # --- 2) Create labeled nodes for the DiGraph (one node per clique)
-        def label_for_clique(events):
-            # stable order for reproducibility
-            ev = sorted(events)
-            chunks = []
-            for i, e in enumerate(ev):
-                if i == 0:
-                    chunks.append(e)
-                elif i % eves_per_row == 0:
-                    chunks.append("\n" + e)
-                else:
-                    chunks.append(", " + e)
-            return "".join(chunks)
-
-        labels = [label_for_clique(C) for C in cliques]
-
+        # Unknown ordering is not evidence of coincidence. Keep one node per
+        # event; enumerating all maximal coincidence cliques can be exponential.
         DG = nx.DiGraph()
-        DG.add_nodes_from(labels)
-
-        # Representative event per clique (for compatibility with original code)
-        # NOTE: This mimics the original "pick one event" behavior deterministically.
-        rep = [sorted(C)[0] for C in cliques]
-
-        # Helper: symmetric lookup into comps for any unordered pair
-        def get_pair_probs(a, b):
-            if (a, b) in comps:
-                return comps[(a, b)]  # (p_a->b, p_b->a, p_coinc)
-            elif (b, a) in comps:
-                p_ba, p_ab, p_co = comps[(b, a)]
-                return (p_ab, p_ba, p_co)
-            else:
-                return None
-
-        # --- 3) Add directed edges between clique-nodes using reps (preserves original semantics)
-        for i, j in itertools.combinations(range(len(cliques)), 2):
-            r1, r2 = rep[i], rep[j]
-            probs = get_pair_probs(r1, r2)
-            if probs is None:
-                continue
-            p1_2, p2_1, p_coinc = probs
-            if p1_2 > edge_thresh:
-                DG.add_edge(labels[i], labels[j])
-            elif p2_1 > edge_thresh:
-                DG.add_edge(labels[j], labels[i])
-
-        # --- 4) Remove transitive edges (if acyclic)
+        DG.add_nodes_from(sorted(set(itertools.chain.from_iterable(comps.keys()))))
+        for (a, b), (p_ab, p_ba, _) in comps.items():
+            if p_ab > edge_thresh:
+                DG.add_edge(a, b)
+            elif p_ba > edge_thresh:
+                DG.add_edge(b, a)
         if nx.is_directed_acyclic_graph(DG):
             DG = nx.algorithms.dag.transitive_reduction(DG)
-        # else: keep edges as-is; TR is only defined for DAGs
 
         return DG
 
@@ -1474,35 +1445,100 @@ class PhylogicOutput(object):
         return node_positions
 
     def generate_html_from_timing(self, indiv_id, timing_engine, comps, drivers=()):
-        nodes, edges, pos = self.draw_timing_graph(indiv_id, comps)
+        # For the comp graph, exclude fully-unknown pairs (p_before == 0 and
+        # p_after == 0) which come from untimeable events and carry no
+        # ordering information.
+        timeable_comps = {
+            pair: probs for pair, probs in comps.items()
+            if probs[0] > 0 or probs[1] > 0
+        }
+        nodes, edges, pos = self.draw_timing_graph(indiv_id, timeable_comps)
+        n_graph_events = len(set(itertools.chain.from_iterable(timeable_comps)))
+        graph_notice = ('Timing network omitted: {} events exceed the 200-event display limit. Full comparisons are retained.'.format(n_graph_events) if n_graph_events > 200 else 'Pairwise timing preferences, not a lineage tree. Unconnected events are unordered; edges use the existing p > 0.5 display threshold.')
         eve_list = []
         cnv_pi_dists = {}
         driver_pi_dists = {}
+
+        def _is_plotworthy_pi_event(eve):
+            status = getattr(eve, 'timing_status', None)
+            return eve.pi_dist is not None and status in (None, 'estimated', 'subclonal')
+
         if timing_engine.WGD is not None:
-            pi_mean, pi_high, pi_low = self._get_mean_high_low(timing_engine.WGD.pi_dist)
-            pi_score = '{} ({}-{})'.format(pi_mean, pi_low, pi_high)
-            eve_list.append({'Event name': 'WGD', 'Chromosome': '', 'Position': '', 'Pi score': pi_score})
-            cnv_pi_dists['WGD'] = list(timing_engine.WGD.pi_dist)
+            pi_score = 'NA'
+            if eligible(timing_engine.WGD):
+                pi_mean, pi_high, pi_low = self._get_mean_high_low(timing_engine.WGD.pi_dist)
+                pi_score = '{} ({}-{})'.format(pi_mean, pi_low, pi_high)
+            eve_list.append({
+                'Event name': 'WGD',
+                'Chromosome': '',
+                'Position': '',
+                'Pi score': pi_score,
+                'Timing status': getattr(timing_engine.WGD, 'timing_status', 'estimated'),
+                'Timing source': getattr(timing_engine.WGD, 'timing_source', ''),
+                'Timing reason': getattr(timing_engine.WGD, 'timing_reason', '')
+            })
+            if eligible(timing_engine.WGD):
+                cnv_pi_dists['WGD'] = list(timing_engine.WGD.pi_dist)
+
         for eve in itertools.chain(*timing_engine.all_cn_events.values()):
-            pi_mean, pi_high, pi_low = self._get_mean_high_low(eve.pi_dist)
-            pi_score = '{} ({}-{})'.format(pi_mean, pi_low, pi_high)
-            eve_list.append({'Event name': eve.event_name, 'Chromosome': eve.chrN, 'Position': '',
-                             'Pi score': pi_score})
-            cnv_pi_dists[eve.event_name] = list(eve.pi_dist)
+            if _is_plotworthy_pi_event(eve):
+                pi_mean, pi_high, pi_low = self._get_mean_high_low(eve.pi_dist)
+                pi_score = '{} ({}-{})'.format(pi_mean, pi_low, pi_high)
+                cnv_pi_dists[eve.detail_event_name] = list(eve.pi_dist)
+            else:
+                pi_score = 'NA'
+
+            eve_list.append({
+                'Event name': eve.detail_event_name,
+                'Chromosome': eve.chrN,
+                'Position': '',
+                'Pi score': pi_score,
+                'Timing status': getattr(eve, 'timing_status', 'unknown'),
+                'Timing source': getattr(eve, 'timing_source', ''),
+                'Timing reason': getattr(eve, 'timing_reason', '')
+            })
+
         for mut in timing_engine.mutations.values():
-            pi_mean, pi_high, pi_low = self._get_mean_high_low(mut.pi_dist)
-            pi_score = '{} ({}-{})'.format(pi_mean, pi_low, pi_high)
-            eve_list.append({'Event name': mut.event_name, 'Chromosome': mut.chrN, 'Position': mut.pos,
-                             'Pi score': pi_score})
-            if mut.event_name.split('_')[0] in drivers:
-                driver_pi_dists[mut.event_name] = list(mut.pi_dist)
-        with open(os.path.dirname(__file__) + '/timing_report_template.html_', 'r') as fh_in, open(
-                indiv_id + '.phylogic_timing_report.html', 'w') as fh_out:
+            if mut.pi_dist is not None and getattr(mut, 'timing_status', 'estimated') in ('estimated', 'subclonal'):
+                pi_mean, pi_high, pi_low = self._get_mean_high_low(mut.pi_dist)
+                pi_score = '{} ({}-{})'.format(pi_mean, pi_low, pi_high)
+                if mut.event_name.split('_')[0] in drivers:
+                    driver_pi_dists[mut.event_name] = list(mut.pi_dist)
+            else:
+                pi_score = 'NA'
+
+            eve_list.append({
+                'Event name': mut.event_name,
+                'Chromosome': mut.chrN,
+                'Position': mut.pos,
+                'Pi score': pi_score,
+                'Timing status': getattr(mut, 'timing_status', 'estimated'),
+                'Timing source': getattr(mut, 'timing_source', ''),
+                'Timing reason': getattr(mut, 'timing_reason', '')
+            })
+
+        boxplot_pi_dists = {e.event_name: list(e.pi_dist) for e in dedup_cn_events(timing_engine.all_cn_events)
+                            if e.pi_dist is not None}
+        if timing_engine.WGD is not None and eligible(timing_engine.WGD):
+            boxplot_pi_dists['WGD'] = list(timing_engine.WGD.pi_dist)
+        sexes = {getattr(s.sample, 'sex', None) for s in timing_engine.sample_list}
+        if sexes == {'MALE'}:
+            sex_cn_notice = ('Normal X/Y CN=1 outside PAR; the absent minor homolog is not a loss. '
+                             'PAR records without validated reference/local-CN evidence are retained in input/QC and are not assigned a timing. '
+                             'Complete loss of the only homolog is retained as a candidate event, with no WGD order inferred from CN=0 alone.')
+        elif sexes == {'FEMALE'}:
+            sex_cn_notice = 'Normal X CN=2 and Y CN=0. Normal absence of Y is not an acquired loss. Unknown event times are shown as NA in the table.'
+        else:
+            sex_cn_notice = 'Sex-chromosome normal CN metadata unavailable; no sex-specific timing claim is supported.'
+        with open(os.path.dirname(__file__) + '/timing_report_template.html_', 'r') as fh_in, \
+                open(indiv_id + '.phylogic_timing_report.html', 'w') as fh_out:
             html_template = fh_in.read()
             fh_out.write(HTMLTemplate(html_template).substitute(**{
                 'indiv_id': indiv_id,
                 'comp_graph_options': json.dumps({'nodes': nodes, 'edges': edges, 'pos': pos}),
-                'boxplot_options': json.dumps({'pi_distributions': cnv_pi_dists}),
+                'graph_notice': graph_notice,
+                'sex_cn_notice': sex_cn_notice,
+                'boxplot_options': json.dumps({'pi_distributions': boxplot_pi_dists}),
                 'cnv_pi_histograms_options': json.dumps({'pi_distributions': cnv_pi_dists}),
                 'driver_pi_histograms_options': json.dumps({'pi_distributions': driver_pi_dists}),
                 'timing_table_options': json.dumps({'eve_list': eve_list})

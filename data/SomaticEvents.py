@@ -126,14 +126,14 @@ class SomMutation:
         self.cluster_assignment = cluster_assignment  # moved to ND VirtualEvent
         # self.post_CCF_1d = None
 
-        if local_cn_a1 is not None:
-            self.local_cn_a1 = float(local_cn_a1)
-        else:
-            self.local_cn_a1 = np.nan
-        if local_cn_a2 is not None:
-            self.local_cn_a2 = float(local_cn_a2)
-        else:
-            self.local_cn_a2 = np.nan
+        # if local_cn_a1 is not None:
+        #    self.local_cn_a1 = float(local_cn_a1)
+        # else:
+        #    self.local_cn_a1 = np.nan
+        # if local_cn_a2 is not None:
+        #    self.local_cn_a2 = float(local_cn_a2)
+        # else:
+        #    self.local_cn_a2 = np.nan
 
     # except:
     #	err = str(sys.exc_info()[1])
@@ -196,8 +196,14 @@ class SomMutation:
         return self.var_str
 
     def clean_local_cn(self, cn1, cn2):
-        self.local_cn_a1 = np.nan if cn1 is None or np.isnan(float(cn1)) else float(cn1)
-        self.local_cn_a2 = np.nan if cn2 is None or np.isnan(float(cn2)) else float(cn2)
+        try:
+            self.local_cn_a1 = float(cn1)
+        except (TypeError, ValueError):
+            self.local_cn_a1 = np.nan
+        try:
+            self.local_cn_a2 = float(cn2)
+        except (TypeError, ValueError):
+            self.local_cn_a2 = np.nan
 
     # update allelic copy number AND assignment of mutation to a copy number event (arm level)
     def _phase_mutation(self, bam_file):
@@ -277,16 +283,19 @@ class CopyNumberEvent():
         self.type = 'CNV'
 
         # self._var_str = ':'.join(map(str, (cn_category, chrN, start.band, end.band, 'a1' if a1 else 'a2')))
-        #
-        # self.event_name = cn_category + str(chrN) + start.band + '-' + end.band[1:] if start != end else mut_category \
-        #                                                                                                   + str(
-        #     chrN) + start.band
+        # self.event_name = cn_category + str(chrN) + start.band + '-' + end.band[1:] if start != end else mut_category + str(chrN) + start.band
         if cn_category.startswith('Arm'):
             gl = cn_category.split('_')[1]
             self.event_name = gl + '_' + str(self.chrN) + self.arm
         elif cn_category.startswith('Focal'):
-            gl = cn_category.split('_')[1]
-            self.event_name = gl + '_' + str(chrN) + start.band + '-' + end.band[1:] if start != end else gl + str(chrN) + start.band
+            gl = cn_category.split('_')[1]  # 'gain', 'loss', or 'homdel'
+            # Use coordinate-based naming to avoid key collisions when multiple
+            # focal intervals map to the same cytoband(s).
+            if isinstance(start, (int, np.integer)) and isinstance(end, (int, np.integer)):
+                self.event_name = f"{gl}_{chrN}:{start}-{end}"
+            else:
+                # Legacy fallback for Cytoband objects
+                self.event_name = gl + '_' + str(chrN) + start.band + ('-' + end.band[1:] if start != end else "")
         elif cn_category == 'WGD':
             self.event_name = 'WGD'
         else:
@@ -457,24 +466,9 @@ class CN_SegProfile:
             @property methods: none
     """
 
-    # csize contains chromosome bp lengths
-    CSIZE = [0, 248956422, 242193529, 198295559, 190214555, 181538259, 170805979, 159345973, 145138636, 138394717,
-            133797422, 135086622, 133275309, 114364328, 107043718, 101991189, 90338345, 83257441, 80373285,
-            58617616, 64444167, 46709983, 50818468, 156040895, 57227415
-        ]
-
-    # centromeres (define arm-level lengths)
-    CENT_LOOKUP = {1: 123400000, 2: 93900000, 3: 90900000, 4: 50000000, 5: 48800000,
-               6: 59800000, 7: 60100000, 8: 45200000, 9: 43000000, 10: 39800000,
-               11: 53400000, 12: 35500000, 13: 17700000, 14: 17200000, 15: 19000000,
-               16: 36800000, 17: 25100000, 18: 18500000, 19: 26200000, 20: 28100000, 21: 12000000,
-               22: 15000000, 23: 61000000, 24: 10400000}
-
     def __init__(self, seg_file, input_type='auto', from_sample=None):
         # try: # validate correct input
-        self.chroms = list(map(str, range(1, 23)))
-        self.chroms.append('X')
-        self.chroms.append('Y')
+        self.chroms = list(map(str, range(1, 23))) + ['X', 'Y']
         self.from_sample = from_sample  # from_sample can be an Object, and potential to get purity from this
         logging.debug('reading in :' + seg_file)
         if input_type == 'auto':
@@ -483,7 +477,8 @@ class CN_SegProfile:
         else:
             seg_file_type = input_type
         self.seg_tree = {x: IntervalTree() for x in self.chroms}
-        if seg_file_type in ['tab', 'absolute', 'sqlite']: self._load_segs(seg_file, seg_file_type)
+        if seg_file_type in ['tab', 'absolute', 'sqlite']:
+            self._load_segs(seg_file, seg_file_type)
         logging.debug(self.seg_tree)
         ## overwrite merged_seg_tree with normal seg tree (raw seg tree)
         self.merged_seg_tree = self.seg_tree
@@ -497,12 +492,16 @@ class CN_SegProfile:
 
     def chrom2int(self, chrom):
         try:
+            if isinstance(chrom, str):
+                return int(chrom.removeprefix("chr"))
             return int(chrom)
         except:
-            if chrom == 'X':
+            if "X" in chrom:
                 return 23
-            else:
+            elif "Y" in chrom:
                 return 24
+            else:
+                return 25
 
     # =======input file readers=======#
     def _auto_file_type(self, seg_file):  # func private to the class
@@ -557,12 +556,8 @@ class CN_SegProfile:
     def _results_from_seg_file(self, seg_file, header_indeces, file_type):
 
         seg_tree = {}
-        for chrom in map(str, CN_SegProfile.CENT_LOOKUP.keys()):
-            if chrom == '23': seg_tree['X'] = IntervalTree()
-            if chrom == '24':
-                seg_tree['Y'] = IntervalTree()
-            else:
-                seg_tree[chrom] = IntervalTree()
+        for chrom in self.chroms:
+            seg_tree[chrom] = IntervalTree()
         if file_type == "PCAWG_consensus":
             use_star = True
             [chrom_idx, a1_idx, a2_idx, sigma_idx, start_idx, end_idx, broad_major_cn_idx,

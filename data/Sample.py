@@ -12,9 +12,11 @@ from intervaltree import Interval, IntervalTree
 
 from scipy.interpolate import interp1d
 
+from data.Enums import Genome
 from data.SomaticEvents import SomMutation, CopyNumberEvent
 
 from utils.calc_ccf import calc_ccf as calc_ccf_
+from utils.sex_cn import baseline, normal_cn, chromosome, PAR38, region_baseline
 
 na_values = {'-1.#IND', '1.#QNAN', '1.#IND', '-1.#QNAN', '#N/A', 'N/A', 'NA', '#NA', 'NULL', 'NaN', '-NaN', 'nan',
              '-nan', ''}  # http://pandas.pydata.org/pandas-docs/stable/io.html#na-values
@@ -42,7 +44,8 @@ class TumorSample:
 
     common_field_map = {"Hugo_Symbol": "gene", "t_alt_count": "alt_cnt", "observed_alt": "alt_cnt", "ref": "ref_cnt",
                         "t_ref_count": "ref_cnt", "Variant_Classification": "mut_category",
-                        "Protein_Change": "prot_change", "Variant_Type": "type_"}  # For reading TSV files.
+                        "Protein_Change": "prot_change", "Variant_Type": "type_",
+                        "local_cn_a1": "local_cn_a1", "local_cn_a2": "local_cn_a2"}  # For reading TSV files.
 
     def __init__(self, file_name, input_type,
                  indiv=None,
@@ -60,12 +63,20 @@ class TumorSample:
                  _additional_muts=None,
                  seg_file=None,
                  purity=None,
+                 ploidy=2,
                  timepoint_value=None,
                  tmb=None,
-                 seg_input_type='auto'):
+                 seg_input_type='auto',
+                 genome=Genome(), sex=None, par_mode='unresolved'):
 
         # Reference to Patient object
         self.indiv = indiv
+        self.genome = genome
+        if sex is not None and genome.build != 'hg38':
+            raise ValueError('Sex-aware PAR coordinates require hg38')
+        self.sex = sex
+        self.par_mode = par_mode
+        self.sex_cn_unresolved = []
         self.sample_name = sample_name
         self.sample_short_id = sample_short_id
         self.DNAsource = DNAsource
@@ -87,6 +98,7 @@ class TumorSample:
         # Dictionary for easy lookup later.
         self.low_coverage_mutations = {}
         self.purity = purity
+        self.ploidy = ploidy
 
         # load and filter mutations
         self.mutations = self._load_sample_ccf(file_name, input_type,
@@ -94,8 +106,9 @@ class TumorSample:
                                                use_indels=use_indels,
                                                _additional_muts=_additional_muts)  # a list of SomMutation objects
 
-        self.CnProfile = self._resolve_CnEvents(seg_file, input_type=seg_input_type)
-        self._get_local_cn_for_each_mut()
+        self.CnProfile = self._resolve_CnEvents(
+            seg_file, input_type=seg_input_type, purity=self.purity,
+            ploidy=self.ploidy, chroms=genome.CHROMS)
 
         self.ClustersPostMarginal = None  # format F[Cluster] = CCF post hist
 
@@ -107,6 +120,18 @@ class TumorSample:
     def _rebin_to_n(y, n):
         f = interp1d(np.linspace(0, 1, len(y)), y)
         return list(f(np.linspace(0, 1, n)))
+
+    @staticmethod
+    def _normalize_chromosome(chromosome, chroms):
+        """Return a chromosome label matching the selected genome build."""
+        chromosome = str(chromosome).strip()
+        core = chromosome[3:] if chromosome.lower().startswith('chr') else chromosome
+        if core == '23':
+            core = 'X'
+        elif core == '24':
+            core = 'Y'
+        has_chr_prefix = bool(chroms) and str(chroms[0]).lower().startswith('chr')
+        return 'chr' + core if has_chr_prefix else core
 
     @property
     def temporarily_removed(self):
@@ -223,7 +248,7 @@ class TumorSample:
                     sample_id = values[header['Sample_ID']]
                     if sample_id == self.sample_name:
                         cluster_id = int(values[header['Cluster_Assignment']])
-                        chromosome = values[header['Chromosome']]
+                        chromosome = self._normalize_chromosome(values[header['Chromosome']], self.genome.CHROMS)
                         position = values[header['Start_position']]
                         ref = values[header['Reference_Allele']]
                         alt = values[header['Tumor_Seq_Allele']]
@@ -242,6 +267,8 @@ class TumorSample:
                                                prot_change=values[header['Protein_change']],
                                                mut_category=values[header['Variant_Classification']],
                                                cluster_assignment=cluster_id,
+                                               local_cn_a1=values[header['Allelic_CN_minor']],
+                                               local_cn_a2=values[header['Allelic_CN_major']],
                                                from_sample=sample_id,
                                                type_=var_type)
                         mutation_list.append(mutation)
@@ -260,11 +287,21 @@ class TumorSample:
 
         # allow buffers.
         file_in = (gzip.open(filen, mode="rt") if filen.endswith(".gz") else open(filen)) if type(filen) == str else filen
+        label = filen if type(filen) == str else getattr(file_in, 'name', '<buffer>')
 
+        # Skip the leading comment block (a MAF carries a VCF-style '#' header) and any
+        # blank lines. readline() returns '' at EOF, so guard on that: a file that is
+        # entirely comments would otherwise index into an empty string.
         header = file_in.readline()
-        while header[0] == "#" or not header.strip():
-            header = header.readline()
-        header = header.strip().split("\t")
+        header_line_no = 1
+        while header and (header.startswith("#") or not header.strip()):
+            header = file_in.readline()
+            header_line_no += 1
+        if not header:
+            raise ValueError("{}: no header line found".format(label))
+        # strip('\n\r'), not strip(): a trailing tab means a real (empty-named) column,
+        # and dropping it here while keeping it in the data rows shifts every field.
+        header = header.strip('\n\r').split("\t")
         h = collections.OrderedDict([[x[1], x[0]] for x in enumerate(header)])
 
         mutation_list = []
@@ -283,16 +320,44 @@ class TumorSample:
             ccf_bins_location = [column_loc[1] for column_loc in h.items() if
                                  "ccf_0." in column_loc[0] or "ccf_1." in column_loc[0]]
 
-        for line in file_in:
-            spl = line.strip('\n\r').split('\t')
-            if not spl:
+        for line_no, line in enumerate(file_in, start=header_line_no + 1):
+            if not line.strip():
                 continue
+            spl = line.strip('\n\r').split('\t')
+            # Every column below is addressed by index, so a row that is not the width
+            # of the header either raises IndexError deep in the parse or -- worse --
+            # silently reads a neighbouring column. A non-rectangular MAF means the
+            # tool that wrote it broke (an unquoted tab or newline in an annotation
+            # field will do it); say so here instead of guessing.
+            if len(spl) != len(header):
+                raise ValueError(
+                    "{}: line {} has {} fields but the header has {}. "
+                    "The file is not a rectangular TSV; fix the tool that wrote it.".format(
+                        label, line_no, len(spl), len(header)))
             if "Chromosome" in h:
-                std_param = [spl[h["Chromosome"]], spl[h["Start_position"]], spl[h["Reference_Allele"]],
+                std_param = [self._normalize_chromosome(spl[h["Chromosome"]], self.genome.CHROMS),
+                             spl[h["Start_position"]], spl[h["Reference_Allele"]],
                              spl[h["Tumor_Seq_Allele2"]]]
             else:
                 # assume that first 4 'Chromosome','Start_position','Reference_Allele','Tumor_Seq_Allele2'
                 std_param = spl[:4]
+                std_param[0] = self._normalize_chromosome(std_param[0], self.genome.CHROMS)
+
+            variant_end = int(spl[h['End_position']]) + 1 if 'End_position' in h else int(std_param[1]) + len(std_param[2])
+            normal_state = region_baseline(self, std_param[0], int(std_param[1]), variant_end)
+            ncn = None if normal_state is None else sum(normal_state)
+            if ncn is None:
+                self.sex_cn_unresolved.append((std_param[:4], 'PAR_reference_unresolved_or_crossing_baseline'))
+                continue
+
+            if chromosome(std_param[0]) in ('X', 'Y'):
+                indices = [h.get('local_cn_a1'), h.get('local_cn_a2')]
+                if all(index is not None for index in indices):
+                    values = [float(spl[index]) for index in indices]
+                    if min(values) < 0:
+                        self.sex_cn_unresolved.append((std_param[:4] + values, 'negative_tumor_CN_estimate_clipped_to_zero'))
+                        for index, value in zip(indices, values):
+                            spl[index] = str(max(0., value))
 
             if calc_ccf:
                 try:
@@ -311,7 +376,7 @@ class TumorSample:
                     else:
                         raise KeyError('No recognized fields for ref allele count')
                     ccf = list(calc_ccf_(local_cn_a1, local_cn_a2, alt_cnt, ref_cnt, self.purity,
-                                         grid_size=self.ccf_grid_size))
+                                         grid_size=self.ccf_grid_size, normal_cn=ncn))
                 except ValueError:
                     logging.warning('Cannot calculate CCF for mutation because of missing allele counts or copy number')
                     continue
@@ -383,41 +448,14 @@ class TumorSample:
         purity, seg_tree = utils.rdata_loader.load_abs_rdata(seg_file)
         self.purity = purity
         return seg_tree
+
     def _get_local_cn_for_each_mut(self):
-
-        if self.CnProfile is None:
-            logging.info("No CN profile found, skip assigning local copy number")
-            return
-
         logging.info("Getting local cn for each mutation")
-
-    # mutation + low_coverage_mutations
-        all_muts = set(self.mutations).union(set(self.low_coverage_mutations.values()))
-
-        for mut in all_muts:
-            chrom = str(mut.chrN)
-            if chrom not in self.CnProfile:
-                continue
-
-            tree = self.CnProfile[chrom]
-            # IntervalTree [start, end)，pos:pos+1
-            hits = tree[mut.pos:mut.pos + 1]
-            if not hits:
-                continue
-
-            interval = list(hits)[0]
-
-            data = interval.data
-            # _resolve_CnEvents data = (sample_name, {'cn_a1':..., 'cn_a2':...})
-            if isinstance(data, tuple):
-                cn_info = data[1]
-            else:
-                cn_info = data
-
-            cn1 = cn_info.get('cn_a1')
-            cn2 = cn_info.get('cn_a2')
-
-            mut.clean_local_cn(cn1, cn2)
+        for mut in set(self.mutations).union(set(self.low_coverage_mutations.values())):
+            # update local cn
+            if len(self.seg_profile.merged_seg_tree[mut.chrN][mut.pos]) > 0:
+                cn1, cn2 = list(self.seg_profile.merged_seg_tree[mut.chrN][mut.pos])[0].data[0:2]
+                mut.clean_local_cn(cn1, cn2)
 
     # ======small class utils====================
     @staticmethod
@@ -438,7 +476,13 @@ class TumorSample:
         else:
             self._mut_varstring_hashtable[muts.var_str] = muts
 
-    def _resolve_CnEvents(self, seg_file, input_type='auto', purity=1, ploidy=2):
+    def _resolve_CnEvents(self, seg_file, input_type='auto', purity=1, ploidy=2, chroms=tuple(list(map(str, range(1, 23))) + ['X', 'Y'])):
+        if purity is None or not np.isfinite(float(purity)) or float(purity) <= 0:
+            raise ValueError('A positive sample purity is required for copy-number CCF calculation')
+        if ploidy is None or not np.isfinite(float(ploidy)) or float(ploidy) <= 0:
+            raise ValueError('A positive sample ploidy is required for copy-number CCF calculation')
+        purity = float(purity)
+        ploidy = float(ploidy)
         if input_type == 'auto':
             if not seg_file:
                 input_type = 'none'
@@ -449,7 +493,7 @@ class TumorSample:
             else:
                 input_type = 'moo'
 
-        seg_tree = {chrom: IntervalTree() for chrom in list(map(str, range(1, 23))) + ['X', 'Y']}
+        seg_tree = {chrom: IntervalTree() for chrom in chroms}
 
         if input_type == 'none':
             return None
@@ -461,7 +505,9 @@ class TumorSample:
                 for line in fh:
                     try:
                         row = dict(zip(header, line.strip('\n').split('\t')))
-                        chrN = row['Chromosome']
+                        chrN = self._normalize_chromosome(row['Chromosome'], chroms)
+                        if chrN not in chroms:
+                            continue
                         start = int(float(row['Start.bp']))
                         end = int(float(row['End.bp']))
                         ccf_hat_a1 = float(row['cancer.cell.frac.a1'])
@@ -488,7 +534,9 @@ class TumorSample:
                 for line in fh:
                     try:
                         row = dict(zip(header, line.strip('\n').split('\t')))
-                        chrN = row['Chromosome']
+                        chrN = self._normalize_chromosome(row['Chromosome'], chroms)
+                        if chrN not in chroms:
+                            continue
                         start = int(float(row['Start.bp']))
                         end = int(float(row['End.bp']))
                         cn_a1 = float(row['modal.a1'])
@@ -502,17 +550,55 @@ class TumorSample:
                 for line in fh:
                     try:
                         row = dict(zip(header, line.strip('\n').split('\t')))
-                        chrN = row['Chromosome']
-                        if chrN == '23':
-                            chrN = 'X'
-                        if chrN == '24':
-                            chrN = 'Y'
+                        chrN = self._normalize_chromosome(row['Chromosome'], chroms)
+                        if chrN not in chroms:
+                            continue
                         start = int(row['Start.bp'])
                         end = int(row['End.bp'])
                         mu_minor = float(row['mu.minor'])
                         sigma_minor = float(row['sigma.minor'])
                         mu_major = float(row['mu.major'])
                         sigma_major = float(row['sigma.major'])
+                        if chromosome(chrN) == 'Y' or (chromosome(chrN) == 'X' and self.sex == 'MALE'):
+                            # Decode the legacy mu bridge with its original +1;
+                            # only then compare absolute CN to the sex baseline.
+                            raw = [1 + (mu * ploidy / 2 - 1) / purity for mu in (mu_minor, mu_major)]
+                            negative_cn = min(raw) < -1e-6
+                            raw = [max(0., value) for value in raw]
+                            errors = [sigma * ploidy / 2 / purity for sigma in (sigma_minor, sigma_major)]
+                            cuts = sorted({start, end} | {v for a, b in PAR38[chromosome(chrN)]
+                                                          for v in (a, b + 1) if start < v < end})
+                            for left, right in zip(cuts, cuts[1:]):
+                                if negative_cn:
+                                    self.sex_cn_unresolved.append(([chrN, left, right], 'negative_absolute_CN_estimate_clipped_to_zero'))
+                                base = baseline(self, chrN, left)
+                                if base is None:
+                                    self.sex_cn_unresolved.append(([chrN, left, right], 'PAR_reference_unresolved'))
+                                    continue
+                                data = {'normal_cn': sum(base)}
+                                for allele, value, error, neutral in zip(('a1', 'a2'), raw, errors, base):
+                                    delta = value - neutral
+                                    if abs(delta) < .1:
+                                        modal, hat, high, low = neutral, 0., 0., 0.
+                                    else:
+                                        if delta < 0:
+                                            modal = max(0., neutral - 1)
+                                        else:
+                                            modal = neutral + 1
+                                            while delta / (modal - neutral) > 1 + .5 / modal:
+                                                modal += 1
+                                        scale = abs(modal - neutral)
+                                        hat = abs(delta) / scale
+                                        # Preserve the legacy caller uncertainty for extant alleles.
+                                        ci_scale = modal if delta > 0 and neutral == 1 else scale
+                                        high = (abs(delta) + error) / ci_scale
+                                        low = (abs(delta) - error) / ci_scale
+                                    data.update({'cn_' + allele: modal,
+                                                 'ccf_hat_' + allele: float(np.clip(hat, 0, 1)),
+                                                 'ccf_high_' + allele: float(np.clip(high, 0, 1)),
+                                                 'ccf_low_' + allele: float(np.clip(low, 0, 1))})
+                                seg_tree[chrN].add(Interval(left, right, (self.sample_name, data)))
+                            continue
                         minor_cn_change = (mu_minor * ploidy / 2 - 1) / purity
                         if -.1 < minor_cn_change < .1:
                             local_cn_a1 = 1
@@ -552,6 +638,12 @@ class TumorSample:
                                 ccf_hat_a2 = major_cn_change / (local_cn_a2 - 1)
                             ccf_high_a2 = ((mu_major + sigma_major) * ploidy / 2 - 1) / local_cn_a2 / purity
                             ccf_low_a2 = ((mu_major - sigma_major) * ploidy / 2 - 1) / local_cn_a2 / purity
+                        ccf_hat_a1 = float(np.clip(ccf_hat_a1, 0, 1))
+                        ccf_high_a1 = float(np.clip(ccf_high_a1, 0, 1))
+                        ccf_low_a1 = float(np.clip(ccf_low_a1, 0, 1))
+                        ccf_hat_a2 = float(np.clip(ccf_hat_a2, 0, 1))
+                        ccf_high_a2 = float(np.clip(ccf_high_a2, 0, 1))
+                        ccf_low_a2 = float(np.clip(ccf_low_a2, 0, 1))
                         seg_tree[chrN].add(Interval(start, end,
                                                     (self.sample_name, {'cn_a1': local_cn_a1, 'cn_a2': local_cn_a2,
                                                                         'ccf_hat_a1': ccf_hat_a1,

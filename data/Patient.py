@@ -1,10 +1,11 @@
+from utils.sex_cn import baseline, region_baseline
 ##########################################################
 # Patient - central class to handle and store sample CCF data
 ##########################################################
 from data.Sample import TumorSample
 from data.Sample import RNASample
 from data.SomaticEvents import SomMutation, CopyNumberEvent
-from data.Enums import CSIZE, CENT_LOOKUP
+from data.Enums import Genome
 from collections import defaultdict, Counter
 import os
 import sys
@@ -54,7 +55,8 @@ class Patient:
                  artifact_whitelist='',
                  use_indels=False,
                  min_coverage=8,
-                 PoN_file=False):
+                 PoN_file=False,
+                 genome_build=None):
 
         # DECLARATIONS
         self.indiv_name = indiv_name
@@ -84,6 +86,8 @@ class Patient:
         # later filled data objects
         self.ND_mutations = []
 
+        self.genome = Genome(build=genome_build) if genome_build is not None else Genome()
+
         # storing of results
         # Clustering
         self.ClusteringResults = None
@@ -95,7 +99,7 @@ class Patient:
 
         self.unclustered_muts = []
 
-        self.concordant_cn_tree = {chrom: IntervalTree() for chrom in list(map(str, range(1, 23))) + ['X', 'Y']}
+        self.concordant_cn_tree = {chrom: IntervalTree() for chrom in self.genome.CHROMS}
 
         # BuildTree
         self.TopTree = None
@@ -134,7 +138,7 @@ class Patient:
         logging.debug('{} genes will be used in the analysis.'.format(len(self.concordant_genes)))
 
     def addSample(self, filen, sample_name, input_type='auto', seg_input_type='auto', grid_size=101, seg_file=None,
-                  _additional_muts=None, purity=None, timepoint_value=None, tmb=None):
+                  _additional_muts=None, purity=None, ploidy=2, timepoint_value=None, tmb=None, sex=None, par_mode='unresolved'):
         """ accepted input types abs; txt; sqlite3 .db # auto tab if .txt, .tsv or .tab ; abs if .Rdata; sqlite if .db"""
 
         if _additional_muts == []:
@@ -150,7 +154,8 @@ class Patient:
                                  ccf_grid_size=grid_size, PoN=self.PoN_file, indiv=self.indiv_name,
                                  use_indels=self.use_indels, min_coverage=self.min_coverage,
                                  _additional_muts=_additional_muts, seg_file=seg_file,
-                                 purity=purity, timepoint_value=timepoint_value, tmb=tmb)
+                                 purity=purity, ploidy=ploidy,
+                                 timepoint_value=timepoint_value, tmb=tmb, genome=self.genome, sex=sex, par_mode=par_mode)
 
         self.sample_list.append(new_sample)
         logging.info('Added sample ' + new_sample.sample_name)
@@ -198,7 +203,8 @@ class Patient:
         if not filen:
             return set()  # empty list
         with open(filen, 'r') as drv_file:
-            drv = [x.strip() for x in drv_file.read().strip().split('\n')]
+            lines = [x.strip().split(" ")[0] for x in drv_file.read().strip().split('\n')]
+            drv = [x for x in lines if not x.startswith("#") and len(x)]
         return set(drv)
 
     def preprocess_samples(self):
@@ -336,6 +342,12 @@ class Patient:
     def cluster_temp_removed(self):
         clust_CCF_results = self.ClusteringResults.clust_CCF_dens
         for mut in self.sample_list[0].low_coverage_mutations.values():
+            if getattr(mut, "type", None) == "CNV":
+                for i, sample in enumerate(self.sample_list):
+                    cn = sample.get_mut_by_varstr(mut.var_str)
+                    if cn.cluster_assignment is not None:
+                        cn.clust_ccf = clust_CCF_results[cn.cluster_assignment - 1][i]
+                continue  # Preserve native nearest-mode CN assignment.
             mut_coincidence = np.ones(len(clust_CCF_results))
             for i, sample in enumerate(self.sample_list):
                 try:
@@ -372,7 +384,7 @@ class Patient:
                 #     mut.clust_ccf = None
 
     @staticmethod
-    def _infer_cn_category(cn_vec, hat_vec=None, eps=0.25, tau=0.5, use_ccf_weight=True):
+    def _infer_cn_category(cn_vec, hat_vec=None, eps=0.25, tau=0.5, use_ccf_weight=True, baseline_cn=1.):
         """
         Decide 'gain' vs 'loss' from per-sample allele CNs.
         cn_vec: tuple/list of per-sample allele CN (int)
@@ -388,18 +400,18 @@ class Patient:
             w = np.array(hat_vec, dtype=float) if use_ccf_weight else np.ones_like(cn)
 
         # Non-neutral mask
-        m = np.abs(cn - 1.0) > eps
+        m = np.abs(cn - baseline_cn) > eps
         if not np.any(m):
             return None  # neutral overall
 
         # Signed vote
-        D = np.sum(w[m] * (cn[m] - 1.0))
+        D = np.sum(w[m] * ((cn - baseline_cn)[m]))
 
         # Consensus requirement
         signD = 1 if D > 0 else (-1 if D < 0 else 0)
         if signD == 0:
             return None
-        agree = np.sum(np.sign(cn[m] - 1.0) == signD)
+        agree = np.sum(np.sign((cn - baseline_cn)[m]) == signD)
         frac = agree / float(np.sum(m))
         if frac < tau:
             return None  # ambiguous
@@ -471,8 +483,8 @@ class Patient:
 
         c_trees = {}
         n_samples = len(self.sample_list)
-        for ckey, (chrom, csize) in enumerate(zip(list(map(str, range(1, 23))) + ['X', 'Y'], CSIZE)):
-            centromere = CENT_LOOKUP[ckey + 1]
+        for chrom, csize in self.genome.CHROM_DICT.items():
+            centromere = self.genome.CENT_DICT[chrom]
             tree = IntervalTree()
             for sample in self.sample_list:
                 if sample.CnProfile:
@@ -486,7 +498,7 @@ class Patient:
                 start = seg.begin
                 end = seg.end
                 arm = "p" if end <= centromere else "q"
-                bands = get_bands(chrom, start, end)
+                bands = self.get_bands(chrom, start, end)
                 cns_a1 = []
                 cns_a2 = []
                 ccf_hat_a1 = []
@@ -570,16 +582,27 @@ class Patient:
         """
 
         # --- helpers ---
+        def _normalize_chrom(chrom):
+            """Match focal-region chromosome labels to the active genome build."""
+            raw = str(chrom).strip()
+            bare = raw[3:] if raw.lower().startswith('chr') else raw
+            prefixed = 'chr' + bare
+            if prefixed in self.genome.CHROM_DICT:
+                return prefixed
+            if bare in self.genome.CHROM_DICT:
+                return bare
+            return raw
+
         def _normalize_focals(focals):
             """Return dict: chrom -> list of dicts {chrom,start,end,type,q,name}."""
             out = defaultdict(list)
             if isinstance(focals, str):
                 with open(focals) as fin:
                     for ln in fin:
-                        if not ln.strip() or ln.startswith('#') or ln.startswith("track name"):
+                        if not ln.strip() or ln.startswith('#') or ln.startswith("track name") or ln.startswith("chromosome"):
                             continue
                         t = ln.strip().split()
-                        chrom = t[0].lstrip('chr')
+                        chrom = _normalize_chrom(t[0])
                         start = int(t[1])
                         end = int(t[2])
                         ftype = "AMP" if "Any-AP" in t[3] else "DEL" if "Any-DP" in t[3] else t[3].upper() if len(t) > 3 else None
@@ -590,7 +613,7 @@ class Patient:
             # iterable
             for r in focals:
                 d = dict(r)
-                d['chrom'] = str(d.get('chrom') or d.get('chr')).lstrip('chr')
+                d['chrom'] = _normalize_chrom(d.get('chrom') or d.get('chr'))
                 d['start'] = int(d['start'])
                 d['end'] = int(d['end'])
                 if 'type' in d and d['type'] is not None:
@@ -636,13 +659,14 @@ class Patient:
             Summarize allele-specific CN & CCF within [s,e) for one sample.
             Returns (cn, hat, hi, lo), with CCFs zeroed if cn==1 (neutral).
             """
+            base = region_baseline(sample, chrom, s, e)[0 if allele_key == 'a1' else 1]
             cn_prof = sample.CnProfile
             if not cn_prof or chrom not in cn_prof:
-                return 1, 0.0, 0.0, 0.0
+                return base, 0.0, 0.0, 0.0
 
             overlaps = list(cn_prof[chrom].overlap(min(0, s - padding), e + padding))
             if not overlaps:
-                return 1, 0.0, 0.0, 0.0
+                return base, 0.0, 0.0, 0.0
 
             ws, cns, hats, his, los = [], [], [], [], []
             for iv in overlaps:
@@ -657,17 +681,17 @@ class Patient:
                 los.append(seg_data[f"ccf_low_{allele_key}"])
 
             if not ws:
-                return 1, 0.0, 0.0, 0.0
+                return base, 0.0, 0.0, 0.0
 
             # optional: enforce directional consistency within this sample+allele
             if require_directional_consistency:
-                dirs = {np.sign(c - 1) for c in cns if c != 1}
+                dirs = {np.sign(c - base) for c in cns if c != base}
                 if len(dirs) > 1:
-                    return 1, 0.0, 0.0, 0.0
+                    return base, 0.0, 0.0, 0.0
 
             cn_mode = _len_weighted_mode(cns, ws)
-            if cn_mode == 1:
-                return 1, 0.0, 0.0, 0.0
+            if cn_mode == base:
+                return base, 0.0, 0.0, 0.0
 
             wsum = float(sum(ws))
             hat = float(np.dot(hats, ws) / wsum)
@@ -690,8 +714,8 @@ class Patient:
         # --- main ---
         focals_by_chr = _normalize_focals(focal_regions)
 
-        for ckey, (chrom, csize) in enumerate(zip(list(map(str, range(1, 23))) + ['X', 'Y'], CSIZE)):
-            centromere = CENT_LOOKUP[ckey + 1]
+        for chrom, csize in self.genome.CHROM_DICT.items():
+            centromere = self.genome.CENT_DICT[chrom]
             regs = focals_by_chr.get(chrom, [])
             if not regs:
                 continue
@@ -715,7 +739,10 @@ class Patient:
                         # this window is too large; treat as arm-level elsewhere
                         continue
 
-                    bands = get_bands(chrom, s0, e0)
+                    region_bases = [region_baseline(sample, chrom, s0, e0) for sample in self.sample_list]
+                    if any(base is None for base in region_bases):
+                        continue
+                    bands = self.get_bands(chrom, s0, e0)
 
                     # summarize per-allele across samples
                     results = {}
@@ -729,9 +756,42 @@ class Patient:
                             lo.append(lo_i)
                         results[allele_key] = (tuple(cn_vec), tuple(hat), tuple(hi), tuple(lo))
 
+                    # ----------------------------------------------------------
+                    # Detect homozygous deletion: at least one sample has both
+                    # alleles at CN=0 in this focal region. Per-sample CCFs are
+                    # preserved, so other samples (neutral, hemizygous loss,
+                    # gain) are represented faithfully in the per-sample event.
+                    # ----------------------------------------------------------
+                    n_samp = len(self.sample_list)
+                    cn_a1, hat_a1, hi_a1, lo_a1 = results.get('a1', ((1,)*n_samp, (0.,)*n_samp, (0.,)*n_samp, (0.,)*n_samp))
+                    cn_a2, hat_a2, hi_a2, lo_a2 = results.get('a2', ((1,)*n_samp, (0.,)*n_samp, (0.,)*n_samp, (0.,)*n_samp))
+
+                    # Any sample with CN=0 on BOTH alleles → homdel carrier
+                    homdel_carriers = {i for i in range(n_samp) if cn_a1[i] == 0 and cn_a2[i] == 0 and all(v > 0 for v in region_bases[i])}
+                    is_homdel = len(homdel_carriers) > 0
+
+                    if is_homdel and R.get('type') in ('DEL', 'DELETION', None):
+                        # Per-sample CN: 0 for carriers, 1 (neutral) for non-carriers.
+                        # Carriers contribute their homdel CCF; non-carriers get 0.
+                        homdel_cns = tuple(0 if i in homdel_carriers else 1 for i in range(n_samp))
+                        homdel_hat = tuple(max(hat_a1[i], hat_a2[i]) if i in homdel_carriers else 0.
+                                          for i in range(n_samp))
+                        homdel_hi = tuple(max(hi_a1[i], hi_a2[i]) if i in homdel_carriers else 0.
+                                         for i in range(n_samp))
+                        homdel_lo = tuple(max(lo_a1[i], lo_a2[i]) if i in homdel_carriers else 0.
+                                         for i in range(n_samp))
+                        self._add_cn_event_to_samples(chrom=chrom, start=s0, end=e0, arm=arm_lbl,
+                                                     cns=homdel_cns, cn_category='Focal_homdel',
+                                                     ccf_hat=homdel_hat, ccf_high=homdel_hi, ccf_low=homdel_lo,
+                                                     a1=True, dupe=False)
+                        # Note: do NOT `continue` here — also let the per-allele
+                        # loss/gain emission below run for non-carrier samples.
+                        # The Focal_homdel and Focal_loss events are independent.
+
                     # emit an event for each allele with any non-neutral evidence
                     for allele_key, (cn_vec, hat, hi, lo) in results.items():
-                        if all(cn == 1 for cn in cn_vec):
+                        neutral = np.array([v[0 if allele_key == 'a1' else 1] for v in region_bases])
+                        if np.all(np.array(cn_vec) == neutral):
                             continue
 
                         if R['type'] in ('AMP', 'AMPLIFICATION'):
@@ -742,19 +802,24 @@ class Patient:
                             gistic_cn_category = ""
 
                         # cn_category = 'Focal_gain' if any(cn > 1 for cn in cn_vec) else 'Focal_loss'
-                        cn_category = self._infer_cn_category(cn_vec, hat)
+                        cn_category = self._infer_cn_category(cn_vec, hat, baseline_cn=neutral)
                         if cn_category is None:
                             print("[DROPPED]", bands, cn_vec, hat)
                             continue
                         cn_category = "Focal_" + cn_category
 
                         if cn_category == gistic_cn_category:
-                            self._add_cn_event_to_samples(chrom=chrom, start=min(bands), end=max(bands), arm=arm_lbl, cns=cn_vec, cn_category=cn_category, ccf_hat=hat, ccf_high=hi, ccf_low=lo, a1=(allele_key == 'a1'), dupe=False)
+                            a1 = allele_key == 'a1'
+                            a2 = not a1
+                            is_gain = "gain" in cn_category
+                            is_loss = not is_gain
+                            dupe = is_gain and a2 or is_loss and a1
+                            self._add_cn_event_to_samples(chrom=chrom, start=s0, end=e0, arm=arm_lbl, cns=cn_vec, cn_category=cn_category, ccf_hat=hat, ccf_high=hi, ccf_low=lo, a1=a1, dupe=dupe)
 
     def get_arm_level_cn_events(self):
         n_samples = len(self.sample_list)
-        for ckey, (chrom, csize) in enumerate(zip(list(map(str, range(1, 23))) + ['X', 'Y'], CSIZE)):
-            centromere = CENT_LOOKUP[ckey + 1]
+        for chrom, csize in self.genome.CHROM_DICT.items():
+            centromere = self.genome.CENT_DICT[chrom]
             tree = IntervalTree()
             for sample in self.sample_list:
                 if sample.CnProfile:
@@ -766,7 +831,12 @@ class Patient:
             for seg in c_tree:
                 start = seg.begin
                 end = seg.end
-                bands = get_bands(chrom, start, end)
+                bands = self.get_bands(chrom, start, end)
+                bases = [region_baseline(sample, chrom, start, end) for sample in self.sample_list]
+                if any(v is None for v in bases):
+                    continue
+                base_a1 = np.array([v[0] for v in bases])
+                base_a2 = np.array([v[1] for v in bases])
                 cns_a1 = []
                 cns_a2 = []
                 ccf_hat_a1 = []
@@ -779,17 +849,17 @@ class Patient:
                     seg_data = seg.data[i][1]
                     cns_a1.append(seg_data['cn_a1'])
                     cns_a2.append(seg_data['cn_a2'])
-                    ccf_hat_a1.append(seg_data['ccf_hat_a1'] if seg_data['cn_a1'] != 1 else 0.)
-                    ccf_hat_a2.append(seg_data['ccf_hat_a2'] if seg_data['cn_a2'] != 1 else 0.)
-                    ccf_high_a1.append(seg_data['ccf_high_a1'] if seg_data['cn_a1'] != 1 else 0.)
-                    ccf_high_a2.append(seg_data['ccf_high_a2'] if seg_data['cn_a2'] != 1 else 0.)
-                    ccf_low_a1.append(seg_data['ccf_low_a1'] if seg_data['cn_a1'] != 1 else 0.)
-                    ccf_low_a2.append(seg_data['ccf_low_a2'] if seg_data['cn_a2'] != 1 else 0.)
+                    ccf_hat_a1.append(seg_data['ccf_hat_a1'] if seg_data['cn_a1'] != base_a1[i] else 0.)
+                    ccf_hat_a2.append(seg_data['ccf_hat_a2'] if seg_data['cn_a2'] != base_a2[i] else 0.)
+                    ccf_high_a1.append(seg_data['ccf_high_a1'] if seg_data['cn_a1'] != base_a1[i] else 0.)
+                    ccf_high_a2.append(seg_data['ccf_high_a2'] if seg_data['cn_a2'] != base_a2[i] else 0.)
+                    ccf_low_a1.append(seg_data['ccf_low_a1'] if seg_data['cn_a1'] != base_a1[i] else 0.)
+                    ccf_low_a2.append(seg_data['ccf_low_a2'] if seg_data['cn_a2'] != base_a2[i] else 0.)
                 cns_a1 = np.array(cns_a1)
                 cns_a2 = np.array(cns_a2)
-                if np.all(cns_a1 == 1):
+                if np.all(cns_a1 == base_a1):
                     pass
-                elif np.all(cns_a1 >= 1) or np.all(cns_a1 <= 1):
+                elif np.all(cns_a1 >= base_a1) or np.all(cns_a1 <= base_a1):
                     if start < centromere < end:
                         event_segs.add((start, centromere, tuple(bands), 'p', tuple(cns_a1), tuple(ccf_hat_a1), tuple(ccf_high_a1), tuple(ccf_low_a1), 'a1'))
                         event_segs.add((centromere, end, tuple(bands), 'q', tuple(cns_a1), tuple(ccf_hat_a1), tuple(ccf_high_a1), tuple(ccf_low_a1), 'a1'))
@@ -799,9 +869,9 @@ class Patient:
                         event_segs.add((start, end, tuple(bands), 'q', tuple(cns_a1), tuple(ccf_hat_a1), tuple(ccf_high_a1), tuple(ccf_low_a1), 'a1'))
                 else:
                     logging.warning('Seg with inconsistent event: {}:{}:{}'.format(chrom, start, end))
-                if np.all(cns_a2 == 1):
+                if np.all(cns_a2 == base_a2):
                     pass
-                elif np.all(cns_a2 >= 1) or np.all(cns_a2 <= 1):
+                elif np.all(cns_a2 >= base_a2) or np.all(cns_a2 <= base_a2):
                     if start < centromere < end:
                         event_segs.add((start, centromere, tuple(bands), 'p', tuple(cns_a2), tuple(ccf_hat_a2), tuple(ccf_high_a2), tuple(ccf_low_a2), 'a2'))
                         event_segs.add((centromere, end, tuple(bands), 'q', tuple(cns_a2), tuple(ccf_hat_a2), tuple(ccf_high_a2), tuple(ccf_low_a2), 'a2'))
@@ -867,7 +937,7 @@ class Patient:
                         clique_allele = clique[0][8]
                         local_cn = clique[0][4]
                         # cn_category = 'Arm_gain' if all(np.array(local_cn) > 1) else 'Arm_loss'
-                        cn_category = self._infer_cn_category(np.array(local_cn), clique_ccf_hat)
+                        cn_category = self._infer_cn_category(np.array(local_cn), clique_ccf_hat, baseline_cn=np.array([baseline(sample, chrom)[0 if clique_allele == 'a1' else 1] for sample in self.sample_list]))
                         if cn_category is None:
                             print("[DROPPED]", clique_bands, local_cn, clique_ccf_hat)
                             continue
@@ -883,13 +953,25 @@ class Patient:
         """
         for i, sample in enumerate(self.sample_list):
             local_cn = cns[i]
-            ccf_hat_i = ccf_hat[i] if local_cn != 1. else 0.
-            ccf_high_i = ccf_high[i] if local_cn != 1. else 0.
-            ccf_low_i = ccf_low[i] if local_cn != 1. else 0.
+            base = baseline(sample, chrom, start if isinstance(start, int) else None)[0 if a1 else 1]
+            ccf_hat_i = ccf_hat[i] if local_cn != base else 0.
+            ccf_high_i = ccf_high[i] if local_cn != base else 0.
+            ccf_low_i = ccf_low[i] if local_cn != base else 0.
             cn = CopyNumberEvent(chrom, cn_category, start=start, end=end, ccf_hat=ccf_hat_i, ccf_high=ccf_high_i, ccf_low=ccf_low_i,
                                  local_cn=local_cn, from_sample=sample, arm=arm, a1=a1, dupe=dupe)
             sample.low_coverage_mutations.update({cn.var_str: cn})
             sample.add_muts_to_hashtable(cn)
+
+    def get_bands(self, chrom, start, end):
+        """
+        Gets cytobands hit by a CN event
+        """
+        table = self.genome.cytoband_table
+        return table.loc[
+            table["chromosome"].isin([chrom, "chr" + chrom])
+            & (start <= table["end"])
+            & (table["start"] <= end)
+            ].apply(lambda row: Cytoband(row["chromosome"], row["band"]), axis=1).to_list()
 
 
 #################################################################################
@@ -949,28 +1031,11 @@ class NDHistogram:
         return {}
 
 
-def get_bands(chrom, start, end, cytoband=os.path.dirname(__file__) + '/supplement_data/cytoBand.txt'):
-    """
-    Gets cytobands hit by a CN event
-    """
-    bands = []
-    on_c = False
-    with open(cytoband, 'r') as f:
-        for line in f:
-            row = line.strip('\n').split('\t')
-            if row[0].strip('chr') != str(chrom):
-                if on_c:
-                    return bands
-                continue
-            if int(row[1]) <= end and int(row[2]) >= start:
-                bands.append(Cytoband(chrom, row[3]))
-                on_c = True
-            if int(row[1]) > end:
-                return bands
-
+# TODO: refactor Cytoband class to allow for other mapping of cytobands (other species)
+# The cytoband names are the same between hg19 and hg38, so it doesn't matter here.
 
 _cytoband_dict = {}
-with open(os.path.dirname(__file__) + '/supplement_data/cytoBand.txt', 'r') as _f:
+with open(os.path.dirname(__file__) + '/supplement_data/cytoBand.hg19.txt', 'r') as _f:
     for _i, _line in enumerate(_f):
         _row = _line.strip('\n').split('\t')
         _cytoband_dict[(_row[0], _row[3])] = _i
