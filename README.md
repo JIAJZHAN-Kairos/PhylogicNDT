@@ -17,10 +17,7 @@ python -m pip install -r requirements.txt
 python provenance/verify_source.py --phylogic-root .
 ```
 
-The hash check confirms 47 source/reference files match the accepted
-2026-10-27 sex-aware V2 snapshot.
-Inference files are unchanged from that accepted version. The existing
-`master` branch is retained.
+The hash check verifies 47 source/reference files against the 2026-10-27 snapshot.
 
 ## 2. Prepare inputs from real SASH/PURPLE files
 
@@ -53,9 +50,8 @@ python workflow/prepare_sash_purple.py \
 
 This generates MAF-like mutation tables with ref/alt counts and local
 minor/major CN, the allelic-capseg segment bridge, **one Cluster SIF and one
-Timing SIF per specimen**, QC and input SHA-256 records. Different patients
-are not combined into a joint-patient SIF. The output directory must be new
-or empty.
+Timing SIF per specimen**, QC and input SHA-256 records. Use a new or empty
+output directory.
 
 ## 3. Run Cluster, Timing and group-level LeagueModel
 
@@ -70,14 +66,10 @@ SASH somatic VCF + PURPLE CN / purity / ploidy / sex
   → LeagueModel: cohort-level relative event ordering
 ```
 
-The tutorial covers gene annotation, driver/focal-peak files, container path
-mapping, per-sample QC, hypermutation exclusions, group denominators,
-preflight and production settings. Production LeagueModel uses 500
+Production LeagueModel uses 500
 permutations / 200 seasons / 4 workers with native automatic event selection.
 
 ## Synthetic example and tests
-
-All synthetic input generation is included; no patient data is needed:
 
 ```bash
 python -m unittest discover -s tests -v
@@ -87,9 +79,7 @@ bash examples/run_demo.sh
 The demo prepares fabricated male/female SASH/PURPLE files, runs Cluster
 (250 iterations), Timing (`--comparison_method original`) and a small native
 LeagueModel test (**2 permutations / 10 seasons**), then verifies outputs.
-The test suite contains **22 core regression tests and 14 input/comparison
-adapter tests**. GitHub Actions runs both and the synthetic integration test
-on Linux / Python 3.12. See [validation](docs/VALIDATION.md).
+See [validation](docs/VALIDATION.md) for the 36 regression/adapter tests.
 
 ## Changes and attribution
 
@@ -99,19 +89,11 @@ on Linux / Python 3.12. See [validation](docs/VALIDATION.md).
 | SASH/PURPLE and hg38 adaptations | Read tumour AD and PCGR annotations, attach PURPLE allele CN, normalise chromosome labels, preserve local CN between stages, and pass actual purity/ploidy through the input path |
 | Project extensions and conservative handling | Use saved Cluster posteriors for CN reconciliation, handle equivalent driver representations and WGD clock evidence, apply sex-specific normal CN, and leave unsupported event ordering unknown |
 
-The last two categories are not blanket claims of upstream bugs. Some are
-inherited adaptations, and others are local analysis choices that can affect
-CCFs, eligible events and timing. The accepted workflow retains the original
-eligible-event comparison method and native LeagueModel automatic selection.
+Eligible-event comparisons use the original comparison method; LeagueModel
+uses native automatic event selection.
 
 - [Change categories, evidence and limitations](docs/REPAIRS_AND_LIMITATIONS.md)
 - [Source identity and regression validation](docs/SOURCE_AND_VALIDATION.md)
 - [Original fork README](docs/UPSTREAM_README.md)
 
-Original PhylogicNDT authorship and [upstream LICENSE](LICENSE) are retained
-for the core, inherited code and core regression fixtures. The independently
-written `workflow/` and `examples/` scripts, `tests/test_workflow.py` and new
-SASH/PURPLE workflow documentation use [workflow/LICENSE](workflow/LICENSE).
-That MIT license does not relicense the core. No upstream endorsement is
-claimed. Study patient data, private cohort lists and study results are not
-added by this branch.
+Licenses: [PhylogicNDT core](LICENSE) · [Input adapters and workflow documentation](workflow/LICENSE).
