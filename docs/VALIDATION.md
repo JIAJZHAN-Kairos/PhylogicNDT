@@ -1,5 +1,14 @@
 # Validation
 
+## 2026-11-02 review regression suite
+
+The current suite contains 49 tests: the 36 original tests plus 13 covering
+the [seven review fixes](REVIEW_FIXES_20261102.md). The new tests include
+actual Timing TSV output and repeated serial/parallel LeagueModel CLI runs.
+Run the complete suite and a new demo directory with the pinned dependencies.
+The source checker now verifies `repaired_source_files_20261102.json`;
+the older manifest and the receipt described below remain historical records.
+
 ## Public independent-adapter tests
 
 ```bash
@@ -26,7 +35,7 @@ conversion on Python 3.12. The integrated repository also runs the 22 core
 regression tests and the full synthetic three-stage smoke test. These are
 compatibility/regression checks, not a biological benchmark.
 
-## Local synthetic integration smoke test
+## Historical local synthetic integration smoke test
 
 On 2026-10-30, the scripts and core completed a local synthetic integration
 test. The core's **47 file hashes matched** the accepted sex-aware V2 snapshot

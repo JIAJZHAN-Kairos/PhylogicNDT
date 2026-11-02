@@ -17,7 +17,8 @@ python -m pip install -r requirements.txt
 python provenance/verify_source.py --phylogic-root .
 ```
 
-The hash check verifies 47 source/reference files against the 2026-10-27 snapshot.
+The hash check verifies the core, adapters and tests against the 2026-11-02
+repair snapshot. The 2026-10-27 hash manifest is retained as historical provenance.
 
 ## 2. Prepare inputs from real SASH/PURPLE files
 
@@ -79,7 +80,8 @@ bash examples/run_demo.sh
 The demo prepares fabricated male/female SASH/PURPLE files, runs Cluster
 (250 iterations), Timing (`--comparison_method original`) and a small native
 LeagueModel test (**2 permutations / 10 seasons**), then verifies outputs.
-See [validation](docs/VALIDATION.md) for the 36 regression/adapter tests.
+See [validation](docs/VALIDATION.md) and the [seven review fixes](docs/REVIEW_FIXES_20261102.md)
+for the regression/adapter tests and input-contract changes.
 
 ## Changes and attribution
 

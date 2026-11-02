@@ -64,7 +64,10 @@ The adapter streams the VCF and:
 1. Selects the explicitly named tumour column and retains PASS sequence
    variants with usable `AD` counts.
 2. Splits multiallelic records into one row per alternate allele, using its
-   corresponding `AD` entry. The reference count remains `AD[0]`.
+   corresponding `AD` entry. `t_ref_count` is the effective binomial
+   non-target-ALT count, `sum(AD) - AD[ALT index]`, so total depth is preserved.
+   Literal `AD[0]` and other ALT counts are retained as `vcf_ref_count` and
+   `vcf_other_alt_count` in the prepared MAF; biallelic counts are unchanged.
 3. Maps each locus to the overlapping PURPLE segment and attaches local
    minor/major allele CN. It omits sites with no usable CN segment, total
    allele CN ≤ 0, malformed/missing counts, zero depth or symbolic alleles.
@@ -72,6 +75,8 @@ The adapter streams the VCF and:
    `INFO/PCGR_CSQ` annotation. Standard VEP `CSQ` alone is **not parsed** by
    this adapter. Without compatible annotation, the variant is kept with
    `Hugo_Symbol=unknown` and loses gene-specific driver interpretation.
+   `ALLELE_NUM` selects the ALT when supplied; otherwise only unambiguous
+   raw, anchor-trimmed or minimal VEP allele matches are accepted.
 5. Writes a MAF-like table for `calc_ccf` plus an allelic-capseg bridge and
    independent per-specimen SIFs.
 
@@ -135,7 +140,10 @@ sigma_mu = max(0.01, 2 * purity * cn_sigma / ploidy)
 
 This is recorded as `sigma_method=proxy_support`, a support-based proxy
 rather than a measured PURPLE confidence interval. Missing support counts
-default to zero. Preserve the PURPLE bridge coordinates without a BED shift.
+default to zero. The adapter converts PURPLE one-based closed `[start,end]`
+to the core's one-based half-open `[start,end+1)` intervals, without shifting
+mutation positions. Do not apply this conversion twice. Preparations made
+before the 2026-11-02 repair should be regenerated into a new directory.
 
 ### Container path mapping
 
@@ -159,7 +167,7 @@ export CORE="$REPO"
 python3 workflow/check_core.py --phylogic-root "$CORE"
 ```
 
-The checker verifies 47 source/reference file hashes. The
+The checker verifies the 2026-11-02 repair snapshot hashes. The
 [runtime reference](../provenance/core-runtime.freeze.txt) records the Linux
 analysis environment.
 

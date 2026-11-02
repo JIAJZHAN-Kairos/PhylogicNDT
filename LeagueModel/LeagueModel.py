@@ -3,6 +3,8 @@ import os
 import pickle
 import tempfile
 import multiprocessing
+import random
+import numpy as np
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import LeagueModel.LeagueModelData as LeagueModelData
@@ -75,7 +77,7 @@ def _run_permutations_parallel(league_model_run, args):
     chunk_size = max(1, args.perm_chunk_size)
     n_chunks = int(math.ceil(float(args.n_perms) / float(chunk_size)))
     final_event_list = list(league_model_run.final_event_list)
-    base_seed = int(getattr(args, 'random_seed', getattr(args, 'seed', None) or 1))
+    base_seed = 1 if args.seed is None else int(args.seed)
 
     # Pickle the pre-built League to a temp file.  Workers load this once
     # via the initializer instead of re-reading the CSV and re-running the
@@ -108,12 +110,15 @@ def _run_permutations_parallel(league_model_run, args):
                                  initializer=_init_worker,
                                  initargs=(league_pickle_path,)) as ex:
             futures = {ex.submit(_run_perm_chunk, payload): idx for idx, payload in enumerate(payloads)}
+            completed = {}
             for fut in as_completed(futures):
                 chunk_idx = futures[fut]
-                odds_list = fut.result()
-                for odds_dict in odds_list:
-                    _append_odds_dict(league_model_run, odds_dict)
+                completed[chunk_idx] = fut.result()
                 logging.info('completed permutation chunk %d/%d', chunk_idx + 1, n_chunks)
+            # Completion order is scheduling-dependent; permutation IDs are not.
+            for chunk_idx in range(n_chunks):
+                for odds_dict in completed[chunk_idx]:
+                    _append_odds_dict(league_model_run, odds_dict)
     finally:
         try:
             os.unlink(league_pickle_path)
@@ -122,6 +127,9 @@ def _run_permutations_parallel(league_model_run, args):
 
 
 def run_league_model(args):
+    if args.seed is not None:
+        random.seed(args.seed)
+        np.random.seed(args.seed)
     print(args)
     import pandas as pd
     import pickle as pkl
@@ -302,6 +310,9 @@ def run_league_model_ipython_notebook(args):
     import random
     import matplotlib.pyplot as plt
     import logging
+    if args.seed is not None:
+        random.seed(args.seed)
+        np.random.seed(args.seed)
 
     if args.comparison_fn is not None:
         full_comp_fn = args.comparison_fn

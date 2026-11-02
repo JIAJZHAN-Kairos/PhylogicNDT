@@ -167,11 +167,14 @@ class TimingEngine(object):
                 for sample in self.sample_list:
                     s_state = sample.cn_states.get(cn_state)
                     if s_state is None:
-                        ccf_hats.append(0.0)
+                        ccf_hats.append(np.nan)
                         continue
-                    # find the matching event by Type; default to 0 if missing
+                    # A missing allele match is unresolved, not CCF zero.
                     match = next((e for e in s_state.cn_events if e.Type == etype and e.allele == eve.allele), None)
-                    ccf_hats.append(float(getattr(match, 'ccf_hat', 0.0) or 0.0))
+                    ccf_hats.append(float(match.ccf_hat) if match is not None else np.nan)
+                eve.sample_ccf_hats = ccf_hats
+                if len(ccf_hats) == 1:
+                    eve.ccf_hat = ccf_hats[0]
                 eve.cluster_id = nearest_cn_cluster(ccf_hats, cluster_ccfs)
                 is_clonal = None if eve.cluster_id is None else eve.cluster_id == 1
                 eve.is_clonal = is_clonal
@@ -545,6 +548,7 @@ class TimingEngine(object):
         uniform_dist = np.ones(101, dtype=float) / 101.0
         subclonal_dist = np.zeros(101, dtype=float)
         subclonal_dist[100] = 1.0
+        local_mutation_estimates = defaultdict(list)
 
         # ------------------------------------------------------------------
         # Small compatibility wrappers in case helper methods were not added
@@ -632,7 +636,10 @@ class TimingEngine(object):
             # time clonal supporting muts relative to this event
             for mut in ev.supporting_muts:
                 if mut.is_clonal:
+                    mut.pi_dist = None
                     mut.get_pi_dist(ev)
+                    if mut.pi_dist is not None:
+                        local_mutation_estimates[mut.var_str].append(mut.pi_dist.copy())
 
             return True
 
@@ -778,6 +785,17 @@ class TimingEngine(object):
                     _set_not_estimable(ev, reason='unsupported_event_type')
 
         # ------------------------------------------------------------------
+        # Focal supports are event-specific objects. Reconcile their estimates
+        # into the canonical output mutations without multiplying overlapping
+        # evidence or allowing the final event visited to overwrite a conflict.
+        for var_str, estimates in local_mutation_estimates.items():
+            mut = self.mutations[var_str]
+            if all(np.allclose(estimates[0], p, atol=1e-10, rtol=0) for p in estimates[1:]):
+                mut.pi_dist = estimates[0]
+            else:
+                mut.pi_dist = None
+                mut.timing_reason = 'conflicting_local_gain_estimates'
+
         # Final fallback for SNVs/indels
         # ------------------------------------------------------------------
         for mut in self.mutations.values():
@@ -888,13 +906,9 @@ class TimingSample(object):
             true_arm_bp = end - start
             arm_bp = 0
             state_bps = {}
+            state_cn_sums = {}
             for seg in arm_segtree:
-                if seg.begin < start:
-                    seg_len = seg.end - start
-                elif seg.end > end:
-                    seg_len = end - seg.begin
-                else:
-                    seg_len = seg.length()
+                seg_len = min(seg.end, end) - max(seg.begin, start)
                 arm_bp += seg_len
                 cn_a1 = seg.data[1]['cn_a1']
                 if abs(cn_a1 - round(cn_a1)) <= .2:
@@ -905,22 +919,39 @@ class TimingSample(object):
                 state_tuple = (cn_a1, cn_a2)
                 state_bps.setdefault(state_tuple, 0)
                 state_bps[state_tuple] += seg_len
+                # Keep the continuous tumour CN through modal-state selection.
+                # Older segment inputs can reconstruct it from their CN CCF.
+                base = region_baseline(self, chrN, seg.begin, seg.end)
+                absolute_cn = []
+                for index, allele in enumerate(('a1', 'a2')):
+                    data = seg.data[1]
+                    if 'absolute_cn_' + allele in data:
+                        value = data['absolute_cn_' + allele]
+                    elif 'ccf_hat_' + allele in data:
+                        value = (base[index] + (data['cn_' + allele] - base[index]) * data['ccf_hat_' + allele]
+                                 if base is not None else np.nan)
+                    else:
+                        value = data['cn_' + allele]  # legacy timing_format: continuous CN
+                    absolute_cn.append(value)
+                state_cn_sums.setdefault(state_tuple, np.zeros(2))
+                state_cn_sums[state_tuple] += seg_len * np.asarray(absolute_cn)
             states_over_threshold = [cn for cn, bp in state_bps.items() if bp > arm_bp * size_threshold]
             if arm_bp < true_arm_bp * .5:  # Only call if at least 50% of arm is in segs
                 self.missing_arms.append((chrN, arm))
             elif len(states_over_threshold) == 1:
                 cn_a1, cn_a2 = next(iter(states_over_threshold))
+                absolute_cn = state_cn_sums[(cn_a1, cn_a2)] / state_bps[(cn_a1, cn_a2)]
                 if concordant_states is None:
                     supporting_muts = [interval.data for interval in self.mutation_intervaltree[chrN][start:end]
                                        if interval.data.local_cn_a1 == cn_a1 and interval.data.local_cn_a2 == cn_a2]
                     cn_state = TimingCNState([self], chrN, arm, (cn_a1, cn_a2), [self.purity],
-                                             supporting_muts=supporting_muts)
+                                             supporting_muts=supporting_muts, absolute_cn=absolute_cn)
                     self.cn_states[chrN + arm] = cn_state
                 elif chrN + arm in concordant_states:
                     supporting_muts = [interval.data for interval in self.concordant_mutation_intervaltree[chrN][start:end]
                                       if interval.data.local_cn_a1 == cn_a1 and interval.data.local_cn_a2 == cn_a2]
                     cn_state = TimingCNState([self], chrN, arm, (cn_a1, cn_a2), [self.purity],
-                                             supporting_muts=supporting_muts)
+                                             supporting_muts=supporting_muts, absolute_cn=absolute_cn)
                     self.concordant_cn_states[chrN + arm] = cn_state
 
     def call_wgd(self, use_concordant_states=False):
@@ -1032,11 +1063,12 @@ class TimingCNState(object):
     Arm events are timed based on copy number state of both arms
     """
 
-    def __init__(self, sample_list, chrN, arm, cn_state, purity, supporting_muts=None, cn_type_prefix='Arm', normal_baseline=None):
+    def __init__(self, sample_list, chrN, arm, cn_state, purity, supporting_muts=None, cn_type_prefix='Arm', normal_baseline=None, absolute_cn=None):
         self.sample_list = sample_list
         self.chrN = chrN
         self.arm = arm
         self.cn_a1, self.cn_a2 = cn_state
+        self.absolute_cn = cn_state if absolute_cn is None else absolute_cn
         self.normal_baseline = normal_baseline if normal_baseline is not None else (baseline(sample_list[0], chrN) if sample_list else (1., 1.))
         self.purity = purity
         self.supporting_muts = supporting_muts
@@ -1075,13 +1107,17 @@ class TimingCNState(object):
                                                 arm=self.arm, copy_number='0/0', allelic_cn=0, allele='both',
                                                 supporting_muts=self.supporting_muts, ccf_hat=1.))
             return
-        for allele, value, cn, base in zip(('a1', 'a2'), (self.cn_a1, self.cn_a2), rounded, bases):
+        for allele, value, cn, base, observed in zip(('a1', 'a2'), (self.cn_a1, self.cn_a2), rounded, bases, self.absolute_cn):
             if value == base:
                 continue
             cn_type = cn_type_prefix + ('_gain' if value > base else '_loss')
+            # Rebase the measured mean against the same baseline as the event
+            # (including WGD), not against a rounded integer state alone.
+            fraction = (observed - base) / (cn - base) if cn != base else np.nan
+            ccf_hat = float(np.clip(fraction, 0., 1.)) if fraction >= 0 else np.nan
             event = TimingCNEvent(self.sample_list, self, Type=cn_type, chrN=self.chrN, arm=self.arm,
                                   copy_number=str(cn_a1) + '/' + str(cn_a2), allelic_cn=cn, allele=allele,
-                                  supporting_muts=self.supporting_muts, ccf_hat=min(abs(value - base), 1.))
+                                  supporting_muts=self.supporting_muts, ccf_hat=ccf_hat)
             self.cn_events.append(event)
 
 

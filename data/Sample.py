@@ -575,7 +575,7 @@ class TumorSample:
                                 if base is None:
                                     self.sex_cn_unresolved.append(([chrN, left, right], 'PAR_reference_unresolved'))
                                     continue
-                                data = {'normal_cn': sum(base)}
+                                data = {'normal_cn': sum(base), 'absolute_cn_a1': raw[0], 'absolute_cn_a2': raw[1]}
                                 for allele, value, error, neutral in zip(('a1', 'a2'), raw, errors, base):
                                     delta = value - neutral
                                     if abs(delta) < .1:
@@ -589,10 +589,8 @@ class TumorSample:
                                                 modal += 1
                                         scale = abs(modal - neutral)
                                         hat = abs(delta) / scale
-                                        # Preserve the legacy caller uncertainty for extant alleles.
-                                        ci_scale = modal if delta > 0 and neutral == 1 else scale
-                                        high = (abs(delta) + error) / ci_scale
-                                        low = (abs(delta) - error) / ci_scale
+                                        high = (abs(delta) + error) / scale
+                                        low = (abs(delta) - error) / scale
                                     data.update({'cn_' + allele: modal,
                                                  'ccf_hat_' + allele: float(np.clip(hat, 0, 1)),
                                                  'ccf_high_' + allele: float(np.clip(high, 0, 1)),
@@ -616,8 +614,8 @@ class TumorSample:
                             while ccf_hat_a1 > .5 / local_cn_a1 + 1:
                                 local_cn_a1 += 1
                                 ccf_hat_a1 = minor_cn_change / (local_cn_a1 - 1)
-                            ccf_high_a1 = ((mu_minor + sigma_minor) * ploidy / 2 - 1) / local_cn_a1 / purity
-                            ccf_low_a1 = ((mu_minor - sigma_minor) * ploidy / 2 - 1) / local_cn_a1 / purity
+                            ccf_high_a1 = ((mu_minor + sigma_minor) * ploidy / 2 - 1) / (local_cn_a1 - 1) / purity
+                            ccf_low_a1 = ((mu_minor - sigma_minor) * ploidy / 2 - 1) / (local_cn_a1 - 1) / purity
 
                         major_cn_change = (mu_major * ploidy / 2 - 1) / purity
                         if -.1 < major_cn_change < .1:
@@ -636,8 +634,8 @@ class TumorSample:
                             while ccf_hat_a2 > .5 / local_cn_a2 + 1:
                                 local_cn_a2 += 1
                                 ccf_hat_a2 = major_cn_change / (local_cn_a2 - 1)
-                            ccf_high_a2 = ((mu_major + sigma_major) * ploidy / 2 - 1) / local_cn_a2 / purity
-                            ccf_low_a2 = ((mu_major - sigma_major) * ploidy / 2 - 1) / local_cn_a2 / purity
+                            ccf_high_a2 = ((mu_major + sigma_major) * ploidy / 2 - 1) / (local_cn_a2 - 1) / purity
+                            ccf_low_a2 = ((mu_major - sigma_major) * ploidy / 2 - 1) / (local_cn_a2 - 1) / purity
                         ccf_hat_a1 = float(np.clip(ccf_hat_a1, 0, 1))
                         ccf_high_a1 = float(np.clip(ccf_high_a1, 0, 1))
                         ccf_low_a1 = float(np.clip(ccf_low_a1, 0, 1))
@@ -646,6 +644,8 @@ class TumorSample:
                         ccf_low_a2 = float(np.clip(ccf_low_a2, 0, 1))
                         seg_tree[chrN].add(Interval(start, end,
                                                     (self.sample_name, {'cn_a1': local_cn_a1, 'cn_a2': local_cn_a2,
+                                                                        'absolute_cn_a1': 1 + minor_cn_change,
+                                                                        'absolute_cn_a2': 1 + major_cn_change,
                                                                         'ccf_hat_a1': ccf_hat_a1,
                                                                         'ccf_high_a1': ccf_high_a1,
                                                                         'ccf_low_a1': ccf_low_a1,

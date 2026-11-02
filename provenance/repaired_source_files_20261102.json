@@ -1,0 +1,234 @@
+[
+  {
+    "path": "BuildTree/BuildTree.py",
+    "sha256": "bcf75e31ce6fde50ccdd5b9345aa2e8b955b516a972cde42754717fa776eeac2"
+  },
+  {
+    "path": "BuildTree/BuildTreeEngine.py",
+    "sha256": "e0a25adbb8f4ff76c0626d8de4a3320655c1d601706d4e89686af7e4739bd7f1"
+  },
+  {
+    "path": "BuildTree/CellPopulation.py",
+    "sha256": "df5cb626944020f8f06c33f9885f06c168622a649853257b099ec35a82e9404f"
+  },
+  {
+    "path": "BuildTree/CellPopulationEngine.py",
+    "sha256": "8a71424ded5e7d38c7d7a6fcf2ad3dc2b787700efddec84b9d095890e5d72139"
+  },
+  {
+    "path": "BuildTree/ClusterObject.py",
+    "sha256": "751ee307a263a5f45505ba735a0c4c6146c69c87b682ab96a43abb5a0abd3650"
+  },
+  {
+    "path": "BuildTree/ClusteringResults.py",
+    "sha256": "bf9801132e197e4d8365ebf02c4e235ad601f40b58921afe7f798f57ea8abcbd"
+  },
+  {
+    "path": "BuildTree/Node.py",
+    "sha256": "0185216fca7e18cc47af99c0652d812441b29fe775feddabfb403f33767f9d49"
+  },
+  {
+    "path": "BuildTree/ShuffleMutations.py",
+    "sha256": "9502b8cdedbb13eb462b5069770d2ca207c768a97227f81a009a8f68b4a1c82e"
+  },
+  {
+    "path": "BuildTree/Tree.py",
+    "sha256": "e3c706005d59b5c6407343469f71ad82a74a1ba9cbc624cb3c8563f41a72d527"
+  },
+  {
+    "path": "BuildTree/__init__.py",
+    "sha256": "6132f23b1a5a07d3548761b40508bbc8b39b5d67ce8b739e33d0b7978e8ea36b"
+  },
+  {
+    "path": "Cluster/Cluster.py",
+    "sha256": "3d1291e2be10a84904f5882f23750ad657ed6dc1a1ec7a919d571aaa70f300d7"
+  },
+  {
+    "path": "Cluster/ClusterEngine.py",
+    "sha256": "a2063561b7a067d76efb39a4098b251888fa6830d5a017410b100862c2705c27"
+  },
+  {
+    "path": "Cluster/DpEngine.py",
+    "sha256": "81dde370108038e92152e0f48dfdcc8d388f27eefbd3b3adce72c4085b85fbbf"
+  },
+  {
+    "path": "Cluster/__init__.py",
+    "sha256": "41605540047d067c1b6ac5a5bc5de237328534d162a5a542ae12db904ccbcd73"
+  },
+  {
+    "path": "GrowthKinetics/GrowthKinetics.py",
+    "sha256": "6f7204fa8d0e4b95481c4b43e95422dc70c7a9d0aaa03d7ce16f63eac1f99466"
+  },
+  {
+    "path": "GrowthKinetics/GrowthKineticsEngine.py",
+    "sha256": "5e6daef011f6c98f5a30d8eba94976df15fae34a0947a7dac8f31dfec5f7c3e1"
+  },
+  {
+    "path": "GrowthKinetics/__init__.py",
+    "sha256": "50af8aa254b4234d99c310aa268e9ee40377f650425cc96e1e8f03b87df43d07"
+  },
+  {
+    "path": "LeagueModel/LeagueModel.py",
+    "sha256": "5ad86d0389f809357bc65b559844851c3202cf8ec7ff203a1984a9182f4d4553"
+  },
+  {
+    "path": "LeagueModel/LeagueModelData.py",
+    "sha256": "f0a7598e96593152feeaa935cabbaa550d2348ad96b2a4bf668f16203e6d0889"
+  },
+  {
+    "path": "LeagueModel/__init__.py",
+    "sha256": "95ef6f60f0a30307284d77d26c9c4b4100c7bf5bf0fad1c4842e42ba67f04f30"
+  },
+  {
+    "path": "PhylogicNDT.py",
+    "sha256": "81a88ac9a437b0537fa024493858dbaef622643ac19b8734aa4f36ebe1b9b271"
+  },
+  {
+    "path": "PhylogicSim/SimEngine.py",
+    "sha256": "626c4bc67e6e0db66a5cfab95057dbfc8612eb1a79329fe49fe870a1d9cc0fdc"
+  },
+  {
+    "path": "PhylogicSim/Simulations.py",
+    "sha256": "21688684352d47c14f7675ce6efcd88a25297f135a935070416da214b3215425"
+  },
+  {
+    "path": "PhylogicSim/__init__.py",
+    "sha256": "fdce2de61bd3e78e791213dde46404f63643fa1f56f5ea4407066d239d3024c9"
+  },
+  {
+    "path": "SOURCE_COMMIT",
+    "sha256": "70687818e8b1e8f32eac355414600c8a0d1f153024a25625f89a816c941030c7"
+  },
+  {
+    "path": "SinglePatientTiming/SinglePatientTiming.py",
+    "sha256": "476fc25c359595ff88020c6f2d684201dfda91a0bcb6629da5341351b08ef27c"
+  },
+  {
+    "path": "SinglePatientTiming/TimingEngine.py",
+    "sha256": "22d05e7b91c66161f839cd889a8a4ba0bd67d7dc19322f8168c43b946161af08"
+  },
+  {
+    "path": "SinglePatientTiming/TimingRepair.py",
+    "sha256": "fde8bd3c21df4ecc959350236a486e1dcb8d501e26596381915e0dcd1e7b4777"
+  },
+  {
+    "path": "SinglePatientTiming/__init__.py",
+    "sha256": "2b42058a22888054f72878b4e1b48f71b70f920cacc095fb1929fc626ec62bd3"
+  },
+  {
+    "path": "create_patient_sif.py",
+    "sha256": "562973a560cedab37b7e0e710a365e1b96b3cecc53b3b6c68e615fac19841f9f"
+  },
+  {
+    "path": "data/CorrectBias.py",
+    "sha256": "0b4a0dd707477a9235a9830b552aa7fa12587ca02604774f92bf2ddbcce2b7a6"
+  },
+  {
+    "path": "data/Enums.py",
+    "sha256": "e2eff4dbe684936c47c148c782e61c9a51bce4ee0803d7ba9baf450382d1433a"
+  },
+  {
+    "path": "data/Patient.py",
+    "sha256": "9e1270c597099f82bdb8efc5987d843d6f48511964fcda5f7a0bd3ea4a555aea"
+  },
+  {
+    "path": "data/Sample.py",
+    "sha256": "3eb4ab6e049d3a6ab0e0c7fd2d7c171bf40d612afff30d183be5bcdccca3f68b"
+  },
+  {
+    "path": "data/SomaticEvents.py",
+    "sha256": "f4fad530ddb5ea6c65d8bab90d874dc9ba7573c7431e6abbf83503b820553bdf"
+  },
+  {
+    "path": "data/__init__.py",
+    "sha256": "13b00ca5226ec32f2d479d899225180206d70872b338d1a6e8d7bf4a55de295b"
+  },
+  {
+    "path": "data/supplement_data/Blacklist_SNVs.txt",
+    "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+  },
+  {
+    "path": "data/supplement_data/cytoBand.hg19.txt",
+    "sha256": "c296fe7d73eafae12569ef7b57c2876c2181f70a79e476c00fb4611ababb2439"
+  },
+  {
+    "path": "data/supplement_data/cytoBand.hg38.txt",
+    "sha256": "83fe19148485d67da5783aefd9402de58fcd0b0b0d2a476164abeb522522acd1"
+  },
+  {
+    "path": "examples/make_demo.py",
+    "sha256": "dcdf56ee345e21e241d8c8a3676909ea8fcbf3579cd81c8d1d12ac03f810ed80"
+  },
+  {
+    "path": "examples/run_demo.sh",
+    "sha256": "5ce64ab51847ee6b3f154bf639697771c784e19707e6e65faab8186cc3941f2f"
+  },
+  {
+    "path": "output/PhylogicOutput.py",
+    "sha256": "6517240d836309e51fa98b453e55c6bb711d9d2e0388809b98dee311b710c0a3"
+  },
+  {
+    "path": "output/__init__.py",
+    "sha256": "a8c24779c242ee3752e938edfcaf33019637e8ace123a38d0677fa58fb350bce"
+  },
+  {
+    "path": "output/report_template.html_",
+    "sha256": "9722e6f8c9b607eda2bfb3061cbe1cf24f423f18326c79bfa1a5fd4c39f76c68"
+  },
+  {
+    "path": "output/timing_report_template.html_",
+    "sha256": "89231cd61b064f6eec2a3dcdf6bd3807ef14f99a88ae8030fb1821f6e7456979"
+  },
+  {
+    "path": "provenance/verify_source.py",
+    "sha256": "7c6d26e1a5718627f315f3cdeee1844afc4d875fbca56c9f1b9ebd7720de0e85"
+  },
+  {
+    "path": "setup.py",
+    "sha256": "25a1efbd1a2c3aa1d825b74d02a4876472c3fc8da04cd6926ecef9c06209925d"
+  },
+  {
+    "path": "tests/test_repairs.py",
+    "sha256": "06ac0af9a7a4571dfa7682af93b424ac6ea26a9059511ec8d3a30c6934048ff8"
+  },
+  {
+    "path": "tests/test_review_regressions.py",
+    "sha256": "243ea6e3ac4d7700b17a2e0ab06164d6d5a13b63fb3e95e4d65f7897dfc3f766"
+  },
+  {
+    "path": "tests/test_sex_cn.py",
+    "sha256": "a03832f1312ded065cf5bbf0e7a2abf22ede27dd7522ffb1820f86051e0326be"
+  },
+  {
+    "path": "tests/test_workflow.py",
+    "sha256": "c1581cae6cb74fb27f5c81318b24b054ee9aef261d0c521bcf90c0cad712ad66"
+  },
+  {
+    "path": "utils/__init__.py",
+    "sha256": "685cf2347dab8cdbea4c13f6b28b3d85ef71e06edb5a23fe5d6f5e03dae154fa"
+  },
+  {
+    "path": "utils/calc_ccf.py",
+    "sha256": "4ce80ea2ac8ba13f4f784032c765adceb0f1e04e92ef24f0c68df9e19f0c3a66"
+  },
+  {
+    "path": "utils/sex_cn.py",
+    "sha256": "bcdf47cfe2d75fb53ca057c90fb162f9f97d6965285a09b8d99f6e582f7626ed"
+  },
+  {
+    "path": "workflow/check_core.py",
+    "sha256": "baeeb382a230642b0703fab06e629a321d888904930719b36143b678f6ca7dc2"
+  },
+  {
+    "path": "workflow/prepare_comparisons.py",
+    "sha256": "04e3dec658a91aca3e7543443f5d7dcd39b8bc97941bb20788b7d5c64524f094"
+  },
+  {
+    "path": "workflow/prepare_sash_purple.py",
+    "sha256": "db4799ffc2a4b0b226c78f78e9a88c25606cc0cfe1bc5f712ff4559cbc507baa"
+  },
+  {
+    "path": "workflow/verify_demo.py",
+    "sha256": "c610f7efb8ea63542752b1d3c9026676b4051d779764b5529dbe0283e83329ee"
+  }
+]

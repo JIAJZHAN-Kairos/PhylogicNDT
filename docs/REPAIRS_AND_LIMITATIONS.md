@@ -1,5 +1,11 @@
 # Changes: upstream bugs, input adaptations and project choices
 
+The [2026-11-02 review fixes](REVIEW_FIXES_20261102.md) update CN CCF
+propagation/uncertainty, indel annotation, focal mutation output, multiallelic
+depth, segment endpoints and RNG handling. The snapshot description below
+records the earlier baseline; current hashes are in
+`provenance/repaired_source_files_20261102.json`.
+
 This branch combines a confirmed upstream code-bug fix, SASH/PURPLE and hg38
 input adaptations, and project-specific extensions and conservative rules.
 These categories should be distinguished in Methods and when sharing the
@@ -72,12 +78,12 @@ from these changes.
 
 ## Source identity, license and validation limits
 
-This branch packages the accepted **sex-aware V2 snapshot, 2026-10-27**.
+This branch builds on the accepted **sex-aware V2 snapshot, 2026-10-27**.
 Its lineage is `phylyc/PhylogicNDT` commit
 `4564634affb7a9ce6f1f2297979f80c501ef874a`, plus inherited and local changes.
 That commit alone is not this branch's implementation. Some adaptations
 predate this publication; they should not all be attributed as newly developed
-here. The exact 47 source/reference files are identified by
+here. That historical snapshot's 47 source/reference files are identified by
 [`accepted_source_files.json`](../provenance/accepted_source_files.json).
 
 ```bash

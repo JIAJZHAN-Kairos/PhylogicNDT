@@ -23,7 +23,7 @@ MAF_COLUMNS = [
     "Hugo_Symbol", "Chromosome", "Start_position", "End_position",
     "Reference_Allele", "Tumor_Seq_Allele2", "Variant_Classification",
     "Variant_Type", "Protein_Change", "Tumor_Sample_Barcode", "t_ref_count", "t_alt_count",
-    "local_cn_a1", "local_cn_a2",
+    "local_cn_a1", "local_cn_a2", "vcf_ref_count", "vcf_other_alt_count",
 ]
 STANDARD_CHROMS = {str(i) for i in range(1, 23)} | {"X", "Y"}
 
@@ -95,7 +95,8 @@ def alleliccapseg_values(allele_cn: float, purity: float, ploidy: float, baf_cou
     return mu, sigma_mu
 
 
-def gene_annotation(info: str, alt: str, csq_fields: list[str] | None) -> tuple[str, str]:
+def gene_annotation(info: str, alt: str, csq_fields: list[str] | None,
+                    ref: str = '', alt_index: int = 1, all_alts=None) -> tuple[str, str]:
     """Return PCGR/VEP SYMBOL and a concise non-synonymous protein change."""
     if not csq_fields or "SYMBOL" not in csq_fields:
         return "unknown", ""
@@ -106,10 +107,35 @@ def gene_annotation(info: str, alt: str, csq_fields: list[str] | None) -> tuple[
     protein_index = csq_fields.index("HGVSp") if "HGVSp" in csq_fields else None
     pick_index = csq_fields.index("PICK") if "PICK" in csq_fields else None
     impact_index = csq_fields.index("IMPACT") if "IMPACT" in csq_fields else None
+    number_index = csq_fields.index("ALLELE_NUM") if "ALLELE_NUM" in csq_fields else None
+    all_alts = all_alts or [alt]
+    allele_indices = {}
+    trim_anchor = (ref and any(len(a) != len(ref) for a in all_alts)
+                   and all(a[0] == ref[0] for a in all_alts))
+    for index, alternate in enumerate(all_alts, start=1):
+        aliases = {alternate}
+        if trim_anchor:
+            aliases.add(alternate[1:] or '-')
+        # Also accept VEP --minimal representation. Ambiguous aliases (e.g.
+        # two deletions both represented by '-') require ALLELE_NUM.
+        r, a = ref, alternate
+        while r and a and r[0] == a[0]:
+            r, a = r[1:], a[1:]
+        while r and a and r[-1] == a[-1]:
+            r, a = r[:-1], a[:-1]
+        aliases.add(a or '-')
+        for allele in aliases:
+            allele_indices.setdefault(allele, set()).add(index)
     candidates = []
     for annotation in csq.removeprefix("PCGR_CSQ=").split(","):
         values = annotation.split("|")
-        if len(values) <= symbol_index or values[0] != alt or not values[symbol_index]:
+        if len(values) <= symbol_index or not values[symbol_index]:
+            continue
+        number = values[number_index] if number_index is not None and len(values) > number_index else ''
+        if number not in ('', '.'):
+            if number != str(alt_index):
+                continue
+        elif allele_indices.get(values[0]) != {alt_index}:
             continue
         candidates.append(values)
     if not candidates:
@@ -199,20 +225,22 @@ def parse_vcf(vcf_path: Path, sample_id: str, segments, starts, writer: csv.Dict
             if len(ad) != len(fields[4].split(",")) + 1:
                 stats["malformed_ad"] += 1
                 continue
+            if any(count < 0 for count in ad):
+                stats["bad_ad"] += 1
+                continue
+            depth = sum(ad)
             ref_count = ad[0]
             for alt_index, alt in enumerate(fields[4].split(","), start=1):
                 alt_count = ad[alt_index]
                 if not re.fullmatch("[ACGT]+", fields[3], re.I) or not re.fullmatch("[ACGT]+", alt, re.I):
                     stats["unsupported_alleles"] += 1
                     continue
-                if ref_count + alt_count == 0:
+                if depth == 0:
                     stats["zero_depth"] += 1
                     continue
-                if ref_count < 0 or alt_count < 0:
-                    stats["bad_ad"] += 1
-                    continue
                 classification, kind = variant_type(fields[3], alt)
-                gene, protein = gene_annotation(fields[7], alt, csq_fields)
+                gene, protein = gene_annotation(fields[7], alt, csq_fields,
+                                                fields[3], alt_index, fields[4].split(','))
                 stats["annotated_gene" if gene != "unknown" else "unannotated_gene"] += 1
                 writer.writerow({
                     "Hugo_Symbol": gene, "Chromosome": chrom,
@@ -220,9 +248,12 @@ def parse_vcf(vcf_path: Path, sample_id: str, segments, starts, writer: csv.Dict
                     "Reference_Allele": fields[3], "Tumor_Seq_Allele2": alt,
                     "Variant_Classification": classification, "Variant_Type": kind,
                     "Protein_Change": protein,
-                    "Tumor_Sample_Barcode": sample_id, "t_ref_count": ref_count,
+                    # The core's binomial model needs all non-target-ALT reads.
+                    # Preserve literal VCF REF/other-ALT counts separately.
+                    "Tumor_Sample_Barcode": sample_id, "t_ref_count": depth - alt_count,
                     "t_alt_count": alt_count, "local_cn_a1": f"{minor:.6g}",
                     "local_cn_a2": f"{major:.6g}",
+                    "vcf_ref_count": ref_count, "vcf_other_alt_count": depth - ref_count - alt_count,
                 })
                 stats["written_variants"] += 1
     return stats
@@ -314,7 +345,8 @@ def prepare(manifest, outdir, results_root, input_root=None):
                 for start, end, minor, major, baf_count, depth_windows in values:
                     a = alleliccapseg_values(minor, row['purity'], row['ploidy'], baf_count, depth_windows)
                     b = alleliccapseg_values(major, row['purity'], row['ploidy'], baf_count, depth_windows)
-                    writer.writerow([chrom, start, end, *(f'{v:.8g}' for v in (*a, *b))])
+                    # PURPLE is one-based closed; core intervals are half-open.
+                    writer.writerow([chrom, start, end + 1, *(f'{v:.8g}' for v in (*a, *b))])
         maf_path = outdir/'maf_with_cn'/f'{sample_id}.withCN.maf'
         with maf_path.open('w', newline='') as handle:
             writer = csv.DictWriter(handle, MAF_COLUMNS, delimiter='\t', lineterminator='\n')
@@ -337,7 +369,9 @@ def prepare(manifest, outdir, results_root, input_root=None):
     qc_fields = ['sample_id','sigma_method']+sorted(set().union(*(r.keys() for r in qc))-{'sample_id','sigma_method'})
     write_tsv(outdir/'preparation_qc.tsv', qc_fields, qc)
     (outdir/'samples.txt').write_text(''.join(n+'\n' for n in names))
-    (outdir/'input_provenance.json').write_text(json.dumps(dict(genome_build='hg38', samples=provenance), indent=2)+'\n')
+    (outdir/'input_provenance.json').write_text(json.dumps(dict(genome_build='hg38',
+        segment_coordinates='one_based_half_open', count_contract='t_ref_count=sum(AD)-target_ALT; vcf_ref_count=AD[0]',
+        samples=provenance), indent=2)+'\n')
     print(f'Prepared {len(names)} specimens; one independent SIF per specimen in {outdir}')
 
 
