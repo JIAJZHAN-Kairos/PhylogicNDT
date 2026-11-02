@@ -5,10 +5,9 @@ workflow. Multiple samples from the same patient require a deliberately built
 joint-patient SIF and validation; this adapter does not construct that design.
 Never pass an entire cohort as one patient's joint SIF.
 
-The repaired core and input adapters are in this same repository, on branch
-`sash-purple-sexaware`. Use this branch for the source hash check below.
-First read [repairs and limitations](REPAIRS_AND_LIMITATIONS.md). An unpatched
-upstream core is not equivalent to the repaired analysis.
+Use branch `sash-purple-sexaware` for the commands and source hash check below.
+See [change categories and limitations](REPAIRS_AND_LIMITATIONS.md) for the
+distinction between upstream bugs, input adaptations and project choices.
 
 ## 1. Select specimens and make an explicit input manifest
 
@@ -37,7 +36,6 @@ Example manifest schema (tab-separated):
 | `purity_path` | Corresponding PURPLE purity table |
 | `vcf_sample` | Optional if exactly equal to `sample_id`; otherwise mandatory exact tumour VCF column |
 | `sex` | Optional validated MALE/FEMALE value; must agree with PURPLE if PURPLE has a recognised value |
-| `par_mode` | Default `unresolved`; change only with actual alignment/reference evidence |
 | `timepoint` | Optional numeric value; default 0, not an inferred evolutionary time |
 
 See the generated `demo/raw/manifest.tsv` for an actual tab-separated file.
@@ -109,12 +107,15 @@ Mutation columns include `Hugo_Symbol`, chromosome/position/ref/alt,
 `Protein_Change`, `t_ref_count`, `t_alt_count`, `local_cn_a1` (minor), and
 `local_cn_a2` (major).
 
-Cluster SIF columns must remain in this order, because the accepted core's
-Cluster reader reads the first six positionally:
+The first six Cluster SIF columns must remain in this order, because the
+accepted core's Cluster reader reads them positionally:
 
 ```text
-sample_id  maf_fn  seg_fn  purity  timepoint  ploidy  sex  par_mode
+sample_id  maf_fn  seg_fn  purity  timepoint  ploidy
 ```
+
+The adapter adds the metadata columns used by the core. Keep the generated
+SIF intact.
 
 Timing SIF adds `cluster_ccf_fn` and points `maf_fn` to Cluster's
 `SAMPLE.mut_ccfs.txt`. Both are generated in advance with the expected result
@@ -130,7 +131,7 @@ mu(C) = 2 * ((1 - purity) + purity * C) / ploidy
 C     = 1 + (mu * ploidy / 2 - 1) / purity
 ```
 
-Keep this inverse pair intact, including on X/Y. The repaired core applies
+Keep this inverse pair intact, including on X/Y. This core applies
 sex- and region-specific normal baselines **after decoding**. Re-encoding
 male X/Y using another normal baseline would double-correct the input.
 
@@ -164,10 +165,9 @@ python3 workflow/prepare_sash_purple.py \
 These runtime paths must exactly match the later binds. Do not mix host
 absolute paths and container-only paths in the same SIF.
 
-## 3. Verify and install the repaired core in this repository
+## 3. Verify the source and install dependencies
 
-After cloning the `sash-purple-sexaware` branch, the repository root is also
-the core root. Do not clone another repository:
+From the repository root:
 
 ```bash
 export CORE="$REPO"
@@ -246,16 +246,14 @@ python3 "$CORE/PhylogicNDT.py" Timing \
   > timing.log 2>&1
 ```
 
-The repaired core requires the **joint Cluster posterior file** via
+This core requires the **joint Cluster posterior file** via
 `cluster_ccf_fn`; do not reconstruct this from a single mean CCF or mix source
 versions. Outputs include `SAMPLE.timing.tsv`, `SAMPLE.comp.tsv`,
 `SAMPLE.event_qc.tsv`, CN/driver provenance QC and Timing HTML.
 
 Some losses/high-CN events legitimately have no estimable time. Inspect event
 status and evidence rather than interpreting a blank timing panel as proof
-of a failed run. Male PAR records with unresolved reference provenance are
-retained in input/QC but have no assigned CCF/time. See
-[the repair contract](REPAIRS_AND_LIMITATIONS.md).
+of a failed run. See [conservative handling and limitations](REPAIRS_AND_LIMITATIONS.md#3-project-extensions-and-conservative-handling).
 
 ## 6. Make explicit sample lists for each group
 

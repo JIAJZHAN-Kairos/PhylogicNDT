@@ -2,15 +2,15 @@
 
 ## Source identity
 
-- This branch packages the accepted sex-aware repair V2 snapshot dated
-  2026-10-27, including the earlier timing repairs.
+- This branch packages the accepted sex-aware V2 snapshot dated 2026-10-27.
 - Baseline lineage: `https://github.com/phylyc/PhylogicNDT.git`, commit
   `4564634affb7a9ce6f1f2297979f80c501ef874a`, plus the local changes described
-  in this branch. That baseline commit alone is not the repaired version.
+  in [change categories and limitations](REPAIRS_AND_LIMITATIONS.md).
+  That baseline commit alone does not identify this branch's implementation.
 - The branch was created in the existing personal fork without changing
   `master`. It retains the upstream LICENSE and attribution.
 - `SOURCE_COMMIT` is the legacy provenance record from the accepted source.
-  Its local-patch list predates the full V2 repairs; the complete file hashes
+  Its local-patch list predates the full V2 changes; the complete file hashes
   in `provenance/accepted_source_files.json` identify the actual version.
 
 ```bash
@@ -28,7 +28,7 @@ the inference implementation.
 python -m unittest discover -s tests -v
 ```
 
-The 22 repair regression tests cover sex-normal baselines/PAR boundaries,
+The 22 core regression tests cover supported sex-specific normal baselines,
 true haploid changes, absent-homolog pseudo-losses, region-specific normal CN
 in CCF/multiplicity, preservation of autosomal CCF calculations, WGD clock
 evidence pooling and eligibility, unknown event times, driver/CN deduplication,

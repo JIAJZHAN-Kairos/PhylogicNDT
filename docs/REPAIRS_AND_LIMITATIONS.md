@@ -1,91 +1,98 @@
-# Repaired core: scope, provenance and limits
+# Changes: upstream bugs, input adaptations and project choices
 
-## Repository and license scope
+This branch combines a confirmed upstream code-bug fix, SASH/PURPLE and hg38
+input adaptations, and project-specific extensions and conservative rules.
+These categories should be distinguished in Methods and when sharing the
+workflow. Not every difference from upstream is a bug fix, and the changes
+are not an independently benchmarked clonal-evolution algorithm.
 
-This branch contains both the repaired inference engine and the independent
-SASH/PURPLE input adapters. The engine, inherited code and core regression
-fixtures retain the [upstream PhylogicNDT LICENSE](../LICENSE), including
-its non-commercial research and redistribution terms. The independently
-written `workflow/` and `examples/` scripts, `tests/test_workflow.py` and the
-new SASH/PURPLE workflow documentation are covered by [workflow/LICENSE](../workflow/LICENSE).
-That MIT license does not relicense the inference engine. Original authorship
-and attribution are retained; this fork does not claim upstream endorsement.
+## 1. Confirmed upstream code bug
 
-The published matching core packages the **sex-aware repair V2, 2026-10-27**,
-including the preceding timing repairs. Its baseline was
-`https://github.com/phylyc/PhylogicNDT.git` at
-`4564634affb7a9ce6f1f2297979f80c501ef874a`, plus local adaptations.
-This commit alone is **not** the repaired implementation. The upstream
-`broadinstitute/PhylogicNDT` repository describes the original tool family.
+`SomMutation.clean_local_cn()` in the
+[baseline source](https://github.com/phylyc/PhylogicNDT/blob/4564634affb7a9ce6f1f2297979f80c501ef874a/data/SomaticEvents.py#L198)
+used:
 
-The exact accepted snapshot is identified by
-[`accepted_source_files.json`](../provenance/accepted_source_files.json), covering
-47 source/reference files. No clinical identifiers, cohort manifests or
-mutation/copy-number records are in that hash list. The legacy core
-`SOURCE_COMMIT` file lists older adaptations only; the full file hashes take
-precedence for version identity. Check this repository's core using:
-
-```bash
-python3 workflow/check_core.py --phylogic-root /path/to/repaired/core
+```python
+self.local_cn_a1 = float(cn1) if not np.nan else np.nan
 ```
 
-## What changed beyond input conversion
+The condition tests the constant `np.nan`, not `cn1`. It is always false,
+so calling this function replaces even a valid CN with NaN. The same error
+affected the second allele. The current implementation converts the supplied
+values and handles missing/invalid input explicitly.
 
-These are implementation adaptations/repairs to a published method, not a
-new independently benchmarked clonal-evolution algorithm.
+This is a directly verified implementation defect. Its presence does not
+establish that every upstream analysis invoked this path or was affected.
 
-| Area | Accepted repair/behaviour |
+## 2. SASH/PURPLE and hg38 adaptations
+
+| Area | Adaptation and attribution |
 |---|---|
-| hg38 compatibility | Normalise input chromosome labels to the selected genome; retain local allele-specific CN through Cluster/Timing |
-| Purity and ploidy | Carry validated values through the input/CCF pipeline; retain the existing invertible PURPLE-to-allelic-capseg bridge |
-| CN/cluster reconciliation | Use saved Cluster posterior modes/support rather than silently deriving clonal identity from a single CCF point estimate; conflicting/unsupported reconstructions remain explicit |
-| Driver annotation | Handle protein-change syntax and overlapping driver representations without counting equivalent records as independent evolutionary events |
-| Uninformative event times | Keep presence with unknown ordering; do not manufacture timing from flat prior-only distributions, unsupported high-copy states or no matching CN reconstruction |
-| Sex-specific normal CN | Male non-PAR X/Y have one normal homolog; female X has two and female Y has none. Apply region-specific normal CN in CCF, multiplicity and event calibration |
-| True X/Y changes | Do not call loss of a normally absent allele; retain observed gain/loss of existing homologs. There is no blanket X/Y filter |
-| Negative X/Y estimates | Bound physically impossible estimates at zero in the corrected core and retain original records/reasons in QC |
-| PAR | Split hg38 male X/Y intervals at PAR boundaries. Unresolved reference/alignment provenance gives no assigned CCF/time, while original records remain auditable |
-| WGD clock evidence | Preserve WGD-neutral doubled states as clock candidates, pool matched clonal mutations once per arm/region, and avoid treating the two allele labels as independent clocks |
-| Uninformative WGD | Retain the event with unknown time if no informative clock exists; it must not create quantitative downstream timing via an artificial uniform fallback |
-| WGD definitions | Keep PURPLE WGD grouping separate from native Timing calls; do not force agreement or an earlier WGD time |
-| Comparisons | The accepted analysis explicitly uses `--comparison_method original`; eligible-event comparison calculations retain the original method, with uninformative events left unknown |
-| LeagueModel | Preserve native automatic selection, arm/focal separation and true sex-chromosome candidates; retain roundoff safeguards and deterministic seed settings |
-| Reports | Distinguish presence from estimable time, include Yp/Yq axes, and prevent large timing comparison graphs from overwhelming report generation |
+| SASH variant input | Select the exact tumour VCF column, map each alternate allele to its AD count, and extract SASH/PCGR gene/protein annotations. This is an input adapter, not a new mutation caller |
+| PURPLE CN input | Attach absolute minor/major allele CN to mutations and encode segments through the existing invertible allelic-capseg bridge. The support-based CN uncertainty proxy is an adapter convention, not a measured PURPLE confidence interval |
+| Chromosome labels | Match `1`/`chr1` and X/Y aliases to the selected hg38 genome dictionary. Exact-key mismatches in our input path could skip records; this is compatibility handling, not evidence that correctly formatted upstream inputs fail |
+| Local CN between stages | Preserve `Allelic_CN_minor`/`Allelic_CN_major` when reading Cluster output into Timing. The baseline reader did not pass these fields into the mutation object; the change avoids dependence on reconstructing them later from segments |
+| Purity and ploidy | Pass actual sample values to CN decoding. The baseline call omitted them and could use defaults of purity 1 and ploidy 2 in this input path. This is a parameter-propagation fix for the selected integration, not a claim about every upstream input type |
+| Sample and file contracts | Generate independent per-specimen SIFs, resolve manifest-relative paths, validate sample columns and CN segments, preserve existing preparations, and record input hashes |
+| Group comparisons | Aggregate explicit specimen lists, normalise comparison-table headers, and reject specimen mismatches, duplicate event pairs and invalid probabilities |
 
-The input-adapter changes are narrower: explicit VCF tumour-column
-selection; manifest-relative path resolution; validation of sample mapping,
-sex and CN files; per-specimen SIFs; immutable preparation directories;
-source hashes and preparation/comparison QC. **The adapters prepare inputs; the core modules in this same repository
-implement the CCF/Timing repairs.**
+The baseline
+[Cluster-output reader](https://github.com/phylyc/PhylogicNDT/blob/4564634affb7a9ce6f1f2297979f80c501ef874a/data/Sample.py#L214)
+and [CN-parser call](https://github.com/phylyc/PhylogicNDT/blob/4564634affb7a9ce6f1f2297979f80c501ef874a/data/Sample.py#L99)
+provide the implementation evidence for these interface changes. hg38 label
+normalisation does not perform a genome-build liftover; mutation, segment,
+centromere, cytoband and focal-region coordinates must already use hg38.
 
-## Sex/PAR assumptions that remain important
+## 3. Project extensions and conservative handling
 
-- Supported normal states are validated MALE/FEMALE baselines; unusual
-  germline CN/sex karyotypes require separate review.
-- `par_mode=unresolved` is the default. The analysis did not have the original
-  DRAGEN/SASH reference/PAR configuration and matched-normal CN evidence
-  needed to resolve male PAR. Do not infer that information from a filename.
-- `x_diploid_y_masked` and `separate_haploid` are explicit input contracts,
-  not modes to select by trial and error. Use them only when the reference
-  and matched-normal interpretation are established.
-- Retained X/Y candidates are not automatically validated biological
-  sex-chromosome alterations. Review coverage, alignment/reference and
-  specimen metadata, especially for low-support focal/PAR candidates.
-- A complete loss of the only homolog does not by itself prove a pre-WGD
-  event. A no-time/presence-only result is valid where ordering evidence
-  is missing.
+These are local or inherited workflow choices. They can change event
+eligibility, CCFs and inferred times; they are not all established upstream
+bugs. The original tool also accepts precomputed CCFs, so its input
+assumptions should not be inferred from our SASH/PURPLE path alone.
 
-## Reproducibility boundary
+| Area | Project behaviour |
+|---|---|
+| CN/cluster reconciliation | Read saved Cluster posterior distributions and use their modes/support for CN assignment. Keep conflicting or unsupported assignments explicit |
+| Driver representations | Handle protein-change syntax and equivalent/overlapping representations to avoid treating the same biological event as independent events |
+| Unknown event ordering | Retain event presence but leave ordering unknown for flat prior-only distributions, unsupported high-copy states or missing CN reconstruction. Presence alone is not timing evidence |
+| Sex-specific normal CN | Use validated sex and supported regional normal CN in CCF, multiplicity and CN-event calibration. Retain true X/Y candidates without a blanket chromosome filter; their biological validity still requires QC |
+| Negative X/Y estimates | Bound physically impossible estimates at zero and retain original records/reasons in QC. This is an explicit preprocessing convention |
+| WGD clock evidence | Include WGD-neutral doubled states as clock candidates, pool matched clonal mutations once per arm/region, and avoid counting two allele labels as independent clocks. This is a change to evidence handling, not merely input formatting |
+| WGD without an informative clock | Retain WGD presence with unknown time rather than create quantitative downstream timing from a uniform fallback. Do not force an earlier WGD or agreement with PURPLE |
+| Reports and numerical safeguards | Distinguish presence from estimable time, include Yp/Yq axes, bound comparison-graph size, and retain probability-roundoff/solver safeguards. These combine project reporting and numerical-compatibility changes |
 
-The independent adapter can be tested publicly with fabricated data. Exact
-reproduction of the historical analysis additionally requires the accepted
-core under its upstream license, matching runtime, the original permitted study inputs,
-driver/peak definitions, cohort/exclusion manifests and analysis parameters.
-The repository does not supply patient data, a study cohort, an ecDNA
-classifier dataset or the study's GISTIC peak reference.
+The accepted workflow uses `--comparison_method original` for eligible-event
+comparisons and native LeagueModel automatic event selection. Seeds,
+parallelism and production permutation/season counts are execution settings,
+not a new LeagueModel algorithm or a formal between-group significance test.
+PURPLE WGD grouping and native Timing WGD calls remain separate definitions.
+A complete loss of a sole homolog does not by itself establish pre-WGD
+ordering. Unsupported high-copy/ecDNA events do not acquire a formation time
+from these changes.
 
-The original mutation preparation used generic variant-class labels and a
-support-based segment uncertainty proxy. These are documented compatibility
-choices, not new measured CN confidence estimates. New downstream users
-must state these assumptions rather than imply that PURPLE directly
-provided the proxy uncertainty.
+## Source identity, license and validation limits
+
+This branch packages the accepted **sex-aware V2 snapshot, 2026-10-27**.
+Its lineage is `phylyc/PhylogicNDT` commit
+`4564634affb7a9ce6f1f2297979f80c501ef874a`, plus inherited and local changes.
+That commit alone is not this branch's implementation. Some adaptations
+predate this publication; they should not all be attributed as newly developed
+here. The exact 47 source/reference files are identified by
+[`accepted_source_files.json`](../provenance/accepted_source_files.json).
+
+```bash
+python3 workflow/check_core.py --phylogic-root .
+```
+
+The engine, inherited code and core regression fixtures retain the
+[upstream LICENSE](../LICENSE). Independently written adapters, examples,
+`tests/test_workflow.py` and new workflow documentation use
+[workflow/LICENSE](../workflow/LICENSE); this does not relicense the core.
+Original authorship is retained.
+
+Regression tests and synthetic examples check implementation behaviour and
+compatibility, not biological accuracy. Exact study reproduction also needs
+the matching runtime, permitted inputs, driver/peak definitions and explicit
+cohort/exclusion manifests. Patient data, clinical cohort lists and study
+results are not supplied. See [source validation](SOURCE_AND_VALIDATION.md)
+and the [SASH/PURPLE tutorial](SASH_PURPLE_TO_PHYLOGIC.md).

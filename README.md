@@ -1,8 +1,7 @@
 # PhylogicNDT — from SASH/PURPLE to clonal-event timing
 
-**One repository:** the repaired PhylogicNDT core, SASH/PURPLE input adapters,
-full tutorial, synthetic examples and regression tests are all included on
-branch **`sash-purple-sexaware`**. No second repository is required.
+This branch integrates PhylogicNDT with SASH/PURPLE input preparation,
+synthetic examples and regression tests.
 
 **[Full tutorial: SASH VCF + PURPLE → Cluster → Timing → LeagueModel](docs/SASH_PURPLE_TO_PHYLOGIC.md)**
 
@@ -19,7 +18,7 @@ python provenance/verify_source.py --phylogic-root .
 ```
 
 The hash check confirms 47 source/reference files match the accepted
-2026-10-27 sex-aware V2 snapshot, including the preceding timing repairs.
+2026-10-27 sex-aware V2 snapshot.
 Inference files are unchanged from that accepted version. The existing
 `master` branch is retained.
 
@@ -41,7 +40,6 @@ Create a tab-separated manifest with these columns:
 | `cn_path` | `/data/A.purple.cnv.somatic.tsv` |
 | `purity_path` | `/data/A.purple.purity.tsv` |
 | `vcf_sample` | Exact VCF tumour column, e.g. `A_TUMOR` |
-| `par_mode` | `unresolved`, unless the alignment/reference evidence establishes another supported mode |
 
 ```bash
 export REPO="$PWD"
@@ -89,21 +87,24 @@ bash examples/run_demo.sh
 The demo prepares fabricated male/female SASH/PURPLE files, runs Cluster
 (250 iterations), Timing (`--comparison_method original`) and a small native
 LeagueModel test (**2 permutations / 10 seasons**), then verifies outputs.
-The test suite contains **22 core repair regressions and 14 input/comparison
+The test suite contains **22 core regression tests and 14 input/comparison
 adapter tests**. GitHub Actions runs both and the synthetic integration test
 on Linux / Python 3.12. See [validation](docs/VALIDATION.md).
 
-## Repairs, provenance and license
+## Changes and attribution
 
-The core repairs include hg38/local-CN compatibility, CN-cluster posterior
-reconciliation, driver-representation deduplication, sex/PAR normal baselines
-and WGD clock evidence handling. True X/Y candidates are retained. Male PAR
-with unresolved provenance remains non-estimable; unsupported or presence-only
-events do not establish an event time. PURPLE and native WGD definitions
-remain independent. LeagueModel is not a clone tree connecting unrelated
-patients or an estimate of ecDNA formation time.
+| Category | Scope |
+|---|---|
+| Confirmed upstream code bug | `clean_local_cn()` tested `not np.nan` instead of the supplied CN, replacing valid values with NaN when called |
+| SASH/PURPLE and hg38 adaptations | Read tumour AD and PCGR annotations, attach PURPLE allele CN, normalise chromosome labels, preserve local CN between stages, and pass actual purity/ploidy through the input path |
+| Project extensions and conservative handling | Use saved Cluster posteriors for CN reconciliation, handle equivalent driver representations and WGD clock evidence, apply sex-specific normal CN, and leave unsupported event ordering unknown |
 
-- [Repair details and remaining limitations](docs/REPAIRS_AND_LIMITATIONS.md)
+The last two categories are not blanket claims of upstream bugs. Some are
+inherited adaptations, and others are local analysis choices that can affect
+CCFs, eligible events and timing. The accepted workflow retains the original
+eligible-event comparison method and native LeagueModel automatic selection.
+
+- [Change categories, evidence and limitations](docs/REPAIRS_AND_LIMITATIONS.md)
 - [Source identity and regression validation](docs/SOURCE_AND_VALIDATION.md)
 - [Original fork README](docs/UPSTREAM_README.md)
 
