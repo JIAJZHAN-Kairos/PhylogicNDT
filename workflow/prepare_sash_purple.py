@@ -319,9 +319,6 @@ def prepare(manifest, outdir, results_root, input_root=None):
         if aberrations not in {'', 'NONE', '[]'}:
             raise ValueError('Non-standard germline CN/sex karyotype requires individual review: '+item['sample_id'])
         item['sex'] = sex
-        item['par_mode'] = row.get('par_mode', '') or 'unresolved'
-        if item['par_mode'] not in {'unresolved', 'x_diploid_y_masked', 'separate_haploid'}:
-            raise ValueError('Unknown par_mode: '+item['par_mode'])
         item['purple_wgd'] = purity_row.get('wholeGenomeDuplication', '')
         item['timepoint'] = float(row.get('timepoint') or 0)
         if not math.isfinite(item['timepoint']):
@@ -331,7 +328,7 @@ def prepare(manifest, outdir, results_root, input_root=None):
         (outdir/folder).mkdir(parents=True, exist_ok=True)
     input_root = PurePosixPath(input_root) if input_root else outdir.resolve()
     results_root = PurePosixPath(results_root)
-    sif_fields = ['sample_id', 'maf_fn', 'seg_fn', 'purity', 'timepoint', 'ploidy', 'sex', 'par_mode']
+    sif_fields = ['sample_id', 'maf_fn', 'seg_fn', 'purity', 'timepoint', 'ploidy', 'sex']
     qc, provenance = [], []
     for row in prepared:
         sample_id = row['sample_id']
@@ -359,7 +356,7 @@ def prepare(manifest, outdir, results_root, input_root=None):
             stats = parse_vcf(row['vcf_path'], sample_id, segments, starts, writer, row.get('vcf_sample'))
         if not stats['written_variants']:
             raise ValueError('No usable variants for '+sample_id+'; inspect VCF tumour name, AD and CN mapping')
-        sif = {key: row[key] for key in ['sample_id','purity','ploidy','timepoint','sex','par_mode']}
+        sif = {key: row[key] for key in ['sample_id','purity','ploidy','timepoint','sex']}
         sif.update(maf_fn=str(input_root/'maf_with_cn'/maf_path.name),
                    seg_fn=str(input_root/'segments'/segment_path.name))
         write_tsv(outdir/'cluster_sif'/f'{sample_id}.sif', sif_fields, [sif])
@@ -369,7 +366,7 @@ def prepare(manifest, outdir, results_root, input_root=None):
         qc.append(dict(sample_id=sample_id, sigma_method='proxy_support',
                        negative_cn_segments_clipped=len(clipped_segments), **stats))
         provenance.append(dict(sample_id=sample_id, vcf_sample=row.get('vcf_sample') or sample_id,
-                               purity=row['purity'], ploidy=row['ploidy'], sex=row['sex'], par_mode=row['par_mode'],
+                               purity=row['purity'], ploidy=row['ploidy'], sex=row['sex'],
                                purple_wgd=row['purple_wgd'], negative_cn_clipped_segments=clipped_segments,
                                inputs={k:dict(path=str(row[k]),sha256=sha256(row[k])) for k in ['vcf_path','cn_path','purity_path']}))
     qc_fields = ['sample_id','sigma_method']+sorted(set().union(*(r.keys() for r in qc))-{'sample_id','sigma_method'})

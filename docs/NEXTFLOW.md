@@ -12,7 +12,7 @@ Use immutable Git commits and container digests in production Launchpad versions
 The image contains public source and dependencies only; input manifests and
 patient files belong in private storage.
 
-The CSV samplesheet has `sample_id,vcf_path,cn_path,purity_path,vcf_sample,sex,par_mode,league_group`.
+The CSV samplesheet has `sample_id,vcf_path,cn_path,purity_path,vcf_sample,sex,league_group`.
 File fields accept local or S3 paths. Optional `vcf_sha256,cn_sha256,purity_sha256`
 are checked against staged bytes. IDs must be unique. Set `expected_samples`
 to the explicit denominator. Each row is an independent specimen; longitudinal
@@ -49,5 +49,5 @@ The deployment clips negative PURPLE allele CN estimates to zero at adaptation,
 per the cohort owner's input rule. Each affected segment's original and clipped
 values are retained in input provenance; QC reports the number clipped. Original
 PURPLE files are not edited. A segment with total CN zero contributes no valid
-mutation CCF. `provenance/nextflow_source_files_20261102.json` identifies this
+mutation CCF. `provenance/nextflow_source_files_20261102_v021.json` identifies this
 version; older repair snapshots and validation receipts remain historical.

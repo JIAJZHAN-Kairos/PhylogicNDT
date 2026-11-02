@@ -47,7 +47,7 @@ def make(root):
         with gzip.open(root/(sample+'.sash.vcf.gz'),'wt') as f:f.write('\n'.join(vcf)+'\n')
         rows.append(dict(sample_id=sample,vcf_path=sample+'.sash.vcf.gz',
                          cn_path=sample+'.purple.cnv.somatic.tsv',purity_path=sample+'.purple.purity.tsv',
-                         vcf_sample=sample,par_mode='unresolved'))
+                         vcf_sample=sample))
     write(root/'manifest.tsv',list(rows[0]),rows)
     (root/'driver_genes.txt').write_text('KRAS\nTP53\nCDKN2A\nSMAD4\n')
     (root/'focal_peaks.bed').write_text('chr8\t127188796\t127328999\tAMP\nchr9\t21865961\t21995127\tDEL\n')

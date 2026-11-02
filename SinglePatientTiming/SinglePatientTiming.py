@@ -35,7 +35,7 @@ def run_tool(args):
                 seg_file=row['seg_fn'],
                 purity=row['purity'],
                 ploidy=ploidy,
-                sex=row.get('sex'), par_mode=row.get('par_mode', 'unresolved')
+                sex=row.get('sex')
             )
 
     else:  # if sample names/files are specified directly on cmdline

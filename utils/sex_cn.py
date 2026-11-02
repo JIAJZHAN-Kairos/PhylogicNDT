@@ -1,7 +1,6 @@
 """Normal copy state for the hg38 PURPLE absolute-CN input contract.
 
-Coordinates are one-based, inclusive. PAR mode must describe the alignment
-reference, not be inferred from a filename containing 'masked'.
+Coordinates are one-based, inclusive.
 """
 
 PAR38 = {'X': ((10001, 2781479), (155701383, 156030895)),
@@ -34,11 +33,6 @@ def baseline(sample, chrom, pos=None):
     if sex == 'FEMALE':
         return (1., 1.) if chrom == 'X' else (0., 0.)
     if pos is not None and any(a <= int(pos) <= b for a, b in PAR38[chrom]):
-        mode = getattr(sample, 'par_mode', 'unresolved')
-        if mode == 'x_diploid_y_masked':
-            return (1., 1.) if chrom == 'X' else None
-        if mode == 'separate_haploid':
-            return (0., 1.)
         return None
     return (0., 1.)
 
@@ -64,6 +58,6 @@ def write_qc(samples, phase):
     for sample in samples:
         with open(sample.sample_name + '.' + phase + '.sex_cn_qc.tsv', 'w') as handle:
             writer = csv.writer(handle, delimiter='\t', lineterminator='\n')
-            writer.writerow(['sample', 'sex', 'par_mode', 'record', 'reason'])
+            writer.writerow(['sample', 'sex', 'record', 'reason'])
             for record, reason in sample.sex_cn_unresolved:
-                writer.writerow([sample.sample_name, sample.sex, sample.par_mode, json.dumps(record), reason])
+                writer.writerow([sample.sample_name, sample.sex, json.dumps(record), reason])

@@ -1,0 +1,42 @@
+{
+  "pass_validation": true,
+  "validated_utc": "2026-11-02T03:50:57.857244+00:00",
+  "dataset": "Fabricated example only; no patient data",
+  "python": "3.12.2",
+  "platform": "Darwin arm64",
+  "runtime": {
+    "numpy": "1.26.4",
+    "scipy": "1.16.0",
+    "pandas": "2.2.2"
+  },
+  "core_manifest_sha256": "5dbdfc174b34ccea7fe822505603d321a6fd7498744662121bf9c73e032f57a8",
+  "cluster_iterations": 250,
+  "comparison_method": "original",
+  "samples": [
+    {
+      "sample": "DEMO_MALE",
+      "mutation_rows": 303,
+      "clusters": 2,
+      "comparison_rows": 78,
+      "event_qc_rows": 13,
+      "unresolved_sex_cn_qc_rows": 5,
+      "par_mutation_retained": false
+    },
+    {
+      "sample": "DEMO_FEMALE",
+      "mutation_rows": 304,
+      "clusters": 2,
+      "comparison_rows": 55,
+      "event_qc_rows": 11,
+      "unresolved_sex_cn_qc_rows": 0,
+      "par_mutation_retained": true
+    }
+  ],
+  "league": {
+    "samples": 2,
+    "permutations": 2,
+    "seasons": 10,
+    "selected_events": 13
+  },
+  "limitation": "Smoke compatibility only, not a biological benchmark or a full production LeagueModel run."
+}

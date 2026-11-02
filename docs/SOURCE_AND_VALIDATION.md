@@ -16,7 +16,7 @@
   `provenance/repaired_source_files_20261102.json` identifies the seven-fix
   snapshot. The current deployment, including the Nextflow wrapper and audited
   negative-CN-to-zero input rule, is identified by
-  `provenance/nextflow_source_files_20261102.json`.
+  `provenance/nextflow_source_files_20261102_v021.json`.
 
 ```bash
 python provenance/verify_source.py --phylogic-root .

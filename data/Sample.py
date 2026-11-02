@@ -67,7 +67,7 @@ class TumorSample:
                  timepoint_value=None,
                  tmb=None,
                  seg_input_type='auto',
-                 genome=Genome(), sex=None, par_mode='unresolved'):
+                 genome=Genome(), sex=None):
 
         # Reference to Patient object
         self.indiv = indiv
@@ -75,7 +75,6 @@ class TumorSample:
         if sex is not None and genome.build != 'hg38':
             raise ValueError('Sex-aware PAR coordinates require hg38')
         self.sex = sex
-        self.par_mode = par_mode
         self.sex_cn_unresolved = []
         self.sample_name = sample_name
         self.sample_short_id = sample_short_id

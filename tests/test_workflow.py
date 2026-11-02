@@ -34,7 +34,7 @@ class Inputs(unittest.TestCase):
         for sample,sex in [('DEMO_MALE','MALE'),('DEMO_FEMALE','FEMALE')]:
             rows=read_tsv(self.out/'cluster_sif'/(sample+'.sif'))
             self.assertEqual(len(rows),1)
-            self.assertEqual(list(rows[0]),['sample_id','maf_fn','seg_fn','purity','timepoint','ploidy','sex','par_mode'])
+            self.assertEqual(list(rows[0]),['sample_id','maf_fn','seg_fn','purity','timepoint','ploidy','sex'])
             self.assertEqual(rows[0]['sex'],sex)
             self.assertEqual(rows[0]['maf_fn'],f'/input/maf_with_cn/{sample}.withCN.maf')
             timing=read_tsv(self.out/'timing_sif'/(sample+'.sif'))[0]
@@ -49,12 +49,21 @@ class Inputs(unittest.TestCase):
             self.assertTrue(any(r['Chromosome']=='X' and r['Start_position']=='20000' for r in maf))
         provenance=json.loads((self.out/'input_provenance.json').read_text())
         self.assertEqual(len(provenance['samples']),2)
-        self.assertEqual(provenance['samples'][0]['par_mode'],'unresolved')
+        self.assertNotIn('par_mode',provenance['samples'][0])
 
     def test_exact_tumour_column_required(self):
         self.change_manifest(vcf_sample='DOES_NOT_EXIST')
         with self.assertRaisesRegex(ValueError,'explicitly named tumour'):
             self.run_prepare()
+
+    def test_removed_mode_is_ignored_in_legacy_manifest(self):
+        self.change_manifest(par_mode='x_diploid_y_masked')
+        self.run_prepare()
+        for folder in ['cluster_sif', 'timing_sif']:
+            row=read_tsv(self.out/folder/'DEMO_MALE.sif')[0]
+            self.assertNotIn('par_mode',row)
+        provenance=json.loads((self.out/'input_provenance.json').read_text())
+        self.assertTrue(all('par_mode' not in r for r in provenance['samples']))
 
     def test_runtime_alias_is_not_vcf_sample_guess(self):
         self.change_manifest(sample_id='RENAMED')

@@ -7,8 +7,9 @@ the [seven review fixes](REVIEW_FIXES_20261102.md). The new tests include
 actual Timing TSV output and repeated serial/parallel LeagueModel CLI runs.
 Run the complete suite and a new demo directory with the pinned dependencies.
 The Nextflow deployment adds three guards for complete cohorts, staged input
-checksums and audited negative CN clipping, giving 52 tests in total.
-The source checker now verifies `nextflow_source_files_20261102.json`;
+checksums and audited negative CN clipping, giving 52 tests. Removal of the unused mode selector adds a legacy-input
+regression, giving 53 tests in total.
+The source checker now verifies `nextflow_source_files_20261102_v021.json`;
 the older manifest and the receipt described below remain historical records.
 
 ## Public independent-adapter tests

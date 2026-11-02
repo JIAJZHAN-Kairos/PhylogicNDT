@@ -63,7 +63,7 @@ def verify(root,core,report):
                 dataset='Fabricated example only; no patient data',python=platform.python_version(),
                 platform=platform.system()+' '+platform.machine(),
                 runtime=dict(numpy=numpy.__version__,scipy=scipy.__version__,pandas=pandas.__version__),
-                core_manifest_sha256=hashlib.sha256((Path(__file__).resolve().parents[1]/'provenance/nextflow_source_files_20261102.json').read_bytes()).hexdigest(),
+                core_manifest_sha256=hashlib.sha256((Path(__file__).resolve().parents[1]/'provenance/nextflow_source_files_20261102_v021.json').read_bytes()).hexdigest(),
                 cluster_iterations=250,comparison_method='original',samples=records,
                 league=dict(samples=model.full_n_samps,permutations=model.n_perms,seasons=model.num_seasons,selected_events=len(model.final_event_list)),
                 limitation='Smoke compatibility only, not a biological benchmark or a full production LeagueModel run.')

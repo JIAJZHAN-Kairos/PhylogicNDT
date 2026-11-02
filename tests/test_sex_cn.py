@@ -18,7 +18,7 @@ from SinglePatientTiming.TimingEngine import TimingCNState, TimingMut, TimingEng
 
 
 def sample(sex):
-    return NS(sex=sex, par_mode='unresolved', purity=.6, sample_name='test')
+    return NS(sex=sex, purity=.6, sample_name='test')
 
 
 class SexCN(unittest.TestCase):
@@ -85,9 +85,6 @@ class SexCN(unittest.TestCase):
             self.assertIsNone(normal_cn(male, chrom, start))
             self.assertIsNone(normal_cn(male, chrom, end))
             self.assertEqual(normal_cn(male, chrom, end + 1), 1)
-        male.par_mode = 'x_diploid_y_masked'
-        self.assertEqual(normal_cn(male, 'X', 10001), 2)
-        self.assertIsNone(normal_cn(male, 'Y', 10001))
         self.assertIsNone(region_baseline(male, 'X', 9999, 10002))
         with self.assertRaises(ValueError):
             baseline(NS(), 'X', 3000000)
@@ -144,7 +141,7 @@ class SexCN(unittest.TestCase):
                                 'chrX\t10000\t3000000\t{}\t.01\t{}\t.01\n'.format(
                                     2 * (.4 + .6 * (-.17 if major == 0 else 0)) / 2.6, 2 * (.4 + .6 * major) / 2.6))
                 obj = TumorSample.__new__(TumorSample)
-                obj.sample_name, obj.sex, obj.par_mode = 'test', 'MALE', 'unresolved'
+                obj.sample_name, obj.sex = 'test', 'MALE'
                 obj.sex_cn_unresolved = []
                 tree = obj._resolve_CnEvents(str(path), 'alleliccapseg', purity=.6, ploidy=2.6,
                                             chroms=Genome('hg38').CHROMS)['chrX']

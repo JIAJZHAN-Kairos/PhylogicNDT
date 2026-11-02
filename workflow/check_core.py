@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 def check(root):
-    manifest=Path(__file__).resolve().parents[1]/'provenance/nextflow_source_files_20261102.json'
+    manifest=Path(__file__).resolve().parents[1]/'provenance/nextflow_source_files_20261102_v021.json'
     records=json.loads(manifest.read_text())
     failures=[]
     for r in records:

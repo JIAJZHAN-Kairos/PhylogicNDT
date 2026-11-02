@@ -26,7 +26,7 @@ def run(args):
         if expected and hashlib.sha256(path.read_bytes()).hexdigest() != expected:
             raise ValueError('Input checksum mismatch: ' + field)
     manifest = root/'manifest.tsv'
-    row = {k: meta.get(k, '') for k in ['sample_id', 'sex', 'par_mode', 'vcf_sample']}
+    row = {k: meta.get(k, '') for k in ['sample_id', 'sex', 'vcf_sample']}
     row.update({k: str(v) for k, v in paths.items()})
     with manifest.open('w') as f:
         writer = csv.DictWriter(f, fieldnames=list(row), delimiter='\t')

@@ -32,7 +32,7 @@ from workflow.prepare_sash_purple import (MAF_COLUMNS, alleliccapseg_values, par
 
 def cn_sample(rows, sex='FEMALE'):
     sample = TumorSample.__new__(TumorSample)
-    sample.sample_name, sample.sex, sample.par_mode = 'S', sex, 'unresolved'
+    sample.sample_name, sample.sex = 'S', sex
     sample.sex_cn_unresolved = []
     sample.purity = .6
     with tempfile.TemporaryDirectory() as tmp:

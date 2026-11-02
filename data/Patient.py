@@ -138,7 +138,7 @@ class Patient:
         logging.debug('{} genes will be used in the analysis.'.format(len(self.concordant_genes)))
 
     def addSample(self, filen, sample_name, input_type='auto', seg_input_type='auto', grid_size=101, seg_file=None,
-                  _additional_muts=None, purity=None, ploidy=2, timepoint_value=None, tmb=None, sex=None, par_mode='unresolved'):
+                  _additional_muts=None, purity=None, ploidy=2, timepoint_value=None, tmb=None, sex=None):
         """ accepted input types abs; txt; sqlite3 .db # auto tab if .txt, .tsv or .tab ; abs if .Rdata; sqlite if .db"""
 
         if _additional_muts == []:
@@ -155,7 +155,7 @@ class Patient:
                                  use_indels=self.use_indels, min_coverage=self.min_coverage,
                                  _additional_muts=_additional_muts, seg_file=seg_file,
                                  purity=purity, ploidy=ploidy,
-                                 timepoint_value=timepoint_value, tmb=tmb, genome=self.genome, sex=sex, par_mode=par_mode)
+                                 timepoint_value=timepoint_value, tmb=tmb, genome=self.genome, sex=sex)
 
         self.sample_list.append(new_sample)
         logging.info('Added sample ' + new_sample.sample_name)

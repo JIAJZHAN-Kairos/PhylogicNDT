@@ -57,7 +57,7 @@ def run_tool(args):
             patient_data.addSample(maf_fn, sample_id, timepoint_value=timepoint, grid_size=args.grid_size,
                                    _additional_muts=None, seg_file=seg_fn,
                                    purity=purity, ploidy=ploidy,
-                                   sex=metadata.get('sex'), par_mode=metadata.get('par_mode', 'unresolved'),
+                                   sex=metadata.get('sex'),
                                    input_type=args.maf_input_type,
                                    seg_input_type=args.seg_input_type)
 
