@@ -348,5 +348,3 @@ compact tables and validation records, with SHA-256 checks.
   the scales and populations were identical.
 - PURPLE WGD grouping and native Timing WGD calls are independent definitions.
   Do not force concordance or force WGD to be early.
-- Cohort event ordering is not a clone tree connecting unrelated patients,
-  and ecDNA-group differences do not establish ecDNA causation/formation time.
