@@ -13,8 +13,10 @@
 - `SOURCE_COMMIT` is the legacy provenance record from the accepted source.
   Its local-patch list predates the full V2 changes; the complete file hashes
   in `provenance/accepted_source_files.json` identify that historical version.
-  `provenance/repaired_source_files_20261102.json` identifies the current
-  repaired core, adapters, tests and demo scripts.
+  `provenance/repaired_source_files_20261102.json` identifies the seven-fix
+  snapshot. The current deployment, including the Nextflow wrapper and audited
+  negative-CN-to-zero input rule, is identified by
+  `provenance/nextflow_source_files_20261102.json`.
 
 ```bash
 python provenance/verify_source.py --phylogic-root .

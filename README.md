@@ -72,6 +72,10 @@ permutations / 200 seasons / 4 workers with native automatic event selection.
 
 ## Synthetic example and tests
 
+For AWS Batch and Seqera Launchpad, see the [Nextflow workflow](docs/NEXTFLOW.md).
+It consumes the original SASH `smlv_somatic/filter/<tumor_id>.pass.vcf.gz`,
+PURPLE CN and purity files, with explicit cohort membership and group labels.
+
 ```bash
 python -m unittest discover -s tests -v
 bash examples/run_demo.sh

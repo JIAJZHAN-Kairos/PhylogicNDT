@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "$id": "https://github.com/JIAJZHAN-Kairos/PhylogicNDT",
+  "title": "Sex-aware PhylogicNDT",
+  "type": "object",
+  "properties": {
+    "input": {
+      "type": "string",
+      "title": "Input"
+    },
+    "outdir": {
+      "type": "string",
+      "title": "Outdir"
+    },
+    "container": {
+      "type": "string",
+      "title": "Container"
+    },
+    "driver_genes": {
+      "type": "string",
+      "title": "Driver Genes"
+    },
+    "cn_peaks": {
+      "type": "string",
+      "title": "Cn Peaks"
+    },
+    "expected_samples": {
+      "type": "integer",
+      "default": 380,
+      "minimum": 1
+    },
+    "cluster_iterations": {
+      "type": "integer",
+      "default": 250,
+      "minimum": 1
+    },
+    "league_permutations": {
+      "type": "integer",
+      "default": 500,
+      "minimum": 1
+    },
+    "league_seasons": {
+      "type": "integer",
+      "default": 200,
+      "minimum": 1
+    },
+    "seed": {
+      "type": "integer",
+      "default": 20260813,
+      "minimum": 0
+    }
+  },
+  "required": [
+    "input",
+    "outdir",
+    "container",
+    "driver_genes",
+    "cn_peaks"
+  ]
+}

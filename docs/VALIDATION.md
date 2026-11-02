@@ -2,11 +2,13 @@
 
 ## 2026-11-02 review regression suite
 
-The current suite contains 49 tests: the 36 original tests plus 13 covering
+The review suite contains 49 tests: the 36 original tests plus 13 covering
 the [seven review fixes](REVIEW_FIXES_20261102.md). The new tests include
 actual Timing TSV output and repeated serial/parallel LeagueModel CLI runs.
 Run the complete suite and a new demo directory with the pinned dependencies.
-The source checker now verifies `repaired_source_files_20261102.json`;
+The Nextflow deployment adds three guards for complete cohorts, staged input
+checksums and audited negative CN clipping, giving 52 tests in total.
+The source checker now verifies `nextflow_source_files_20261102.json`;
 the older manifest and the receipt described below remain historical records.
 
 ## Public independent-adapter tests

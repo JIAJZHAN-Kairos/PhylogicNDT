@@ -35,7 +35,7 @@ def canonical_chromosome(value: str) -> str:
     return value
 
 
-def read_segments(path: Path) -> tuple[dict[str, list[tuple[int, int, float, float, int, int]]], dict[str, list[int]]]:
+def read_segments(path: Path, clipped_segments=None) -> tuple[dict[str, list[tuple[int, int, float, float, int, int]]], dict[str, list[int]]]:
     by_chrom: dict[str, list[tuple[int, int, float, float, int, int]]] = {}
     with path.open(newline="") as handle:
         reader = csv.DictReader(handle, delimiter="\t")
@@ -55,6 +55,12 @@ def read_segments(path: Path) -> tuple[dict[str, list[tuple[int, int, float, flo
                 continue
             if start < 1 or end < start or not all(map(math.isfinite, (minor, major))):
                 continue
+            if minor < 0 or major < 0:
+                if clipped_segments is not None:
+                    clipped_segments.append(dict(chromosome=chrom, start=start, end=end,
+                        original_minor=minor, original_major=major,
+                        clipped_minor=max(0., minor), clipped_major=max(0., major)))
+                minor, major = max(0., minor), max(0., major)
             by_chrom.setdefault(chrom, []).append((start, end, min(minor, major), max(minor, major), baf_count, depth_windows))
     starts: dict[str, list[int]] = {}
     for chrom, rows in by_chrom.items():
@@ -329,14 +335,13 @@ def prepare(manifest, outdir, results_root, input_root=None):
     qc, provenance = [], []
     for row in prepared:
         sample_id = row['sample_id']
-        segments, starts = read_segments(row['cn_path'])
+        clipped_segments = []
+        segments, starts = read_segments(row['cn_path'], clipped_segments)
         if not segments:
             raise ValueError('No usable PURPLE CN segments for '+sample_id)
         for chrom, values in segments.items():
             if any(a[1] >= b[0] for a, b in zip(values, values[1:])):
                 raise ValueError('Overlapping CN segments: '+sample_id+' '+chrom)
-            if chrom not in {'X', 'Y'} and any(v[2] < 0 for v in values):
-                raise ValueError('Negative autosomal CN requires review: '+sample_id+' '+chrom)
         segment_path = outdir/'segments'/f'{sample_id}.alleliccapseg.tsv'
         with segment_path.open('w', newline='') as handle:
             writer = csv.writer(handle, delimiter='\t', lineterminator='\n')
@@ -361,10 +366,11 @@ def prepare(manifest, outdir, results_root, input_root=None):
         timing = dict(sif, maf_fn=str(results_root/sample_id/f'{sample_id}.mut_ccfs.txt'),
                       cluster_ccf_fn=str(results_root/sample_id/f'{sample_id}.cluster_ccfs.txt'))
         write_tsv(outdir/'timing_sif'/f'{sample_id}.sif', sif_fields+['cluster_ccf_fn'], [timing])
-        qc.append(dict(sample_id=sample_id, sigma_method='proxy_support', **stats))
+        qc.append(dict(sample_id=sample_id, sigma_method='proxy_support',
+                       negative_cn_segments_clipped=len(clipped_segments), **stats))
         provenance.append(dict(sample_id=sample_id, vcf_sample=row.get('vcf_sample') or sample_id,
                                purity=row['purity'], ploidy=row['ploidy'], sex=row['sex'], par_mode=row['par_mode'],
-                               purple_wgd=row['purple_wgd'],
+                               purple_wgd=row['purple_wgd'], negative_cn_clipped_segments=clipped_segments,
                                inputs={k:dict(path=str(row[k]),sha256=sha256(row[k])) for k in ['vcf_path','cn_path','purity_path']}))
     qc_fields = ['sample_id','sigma_method']+sorted(set().union(*(r.keys() for r in qc))-{'sample_id','sigma_method'})
     write_tsv(outdir/'preparation_qc.tsv', qc_fields, qc)

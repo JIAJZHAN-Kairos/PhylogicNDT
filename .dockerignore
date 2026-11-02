@@ -6,3 +6,8 @@ build/
 dist/
 *.egg-info/
 .pytest_cache/
+.nextflow*
+work
+demo
+results
+.venv
